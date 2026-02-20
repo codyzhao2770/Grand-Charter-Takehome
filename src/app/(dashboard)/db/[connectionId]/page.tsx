@@ -5,6 +5,11 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRefresh } from "@/components/layout/RefreshContext";
+import TablesTab from "@/components/schema/TablesTab";
+import RelationshipsTab from "@/components/schema/RelationshipsTab";
+import EnumsTab from "@/components/schema/EnumsTab";
+import IndexesTab from "@/components/schema/IndexesTab";
+import InterfacesTab from "@/components/schema/InterfacesTab";
 
 const SchemaDiagram = dynamic(() => import("@/components/schema/SchemaDiagram"), { ssr: false });
 
@@ -38,14 +43,15 @@ interface ConnectionDetail {
   lastExtractedAt: string | null;
 }
 
+type TabKey = "tables" | "relationships" | "enums" | "indexes" | "interfaces" | "diagram";
+
 export default function ConnectionPage() {
   const { connectionId } = useParams<{ connectionId: string }>();
   const router = useRouter();
   const { triggerRefresh } = useRefresh();
   const [conn, setConn] = useState<ConnectionDetail | null>(null);
   const [extracting, setExtracting] = useState(false);
-  const [selectedTable, setSelectedTable] = useState<string | null>(null);
-  const [tab, setTab] = useState<"tables" | "relationships" | "enums" | "indexes" | "interfaces" | "diagram">("tables");
+  const [tab, setTab] = useState<TabKey>("tables");
 
   const loadData = useCallback(() => {
     fetch(`/api/db-connections/${connectionId}`)
@@ -85,7 +91,15 @@ export default function ConnectionPage() {
   if (!conn) return <p className="text-zinc-500">Loading...</p>;
 
   const schema = conn.cachedSchema;
-  const activeTable = schema?.tables.find((t) => t.name === selectedTable);
+
+  const tabs: { key: TabKey; label: string; count?: number }[] = [
+    { key: "tables", label: "Tables", count: schema?.tables.length },
+    { key: "relationships", label: "Relationships", count: schema?.relationships.length },
+    { key: "enums", label: "Enums", count: schema?.enums.length },
+    { key: "indexes", label: "Indexes", count: schema?.indexes.length },
+    { key: "interfaces", label: "Interfaces", count: schema?.interfaces.length },
+    { key: "diagram", label: "Diagram" },
+  ];
 
   return (
     <div>
@@ -138,170 +152,28 @@ export default function ConnectionPage() {
 
       {schema && (
         <>
-          <div className="flex gap-1 mb-4 border-b border-zinc-200 dark:border-zinc-800">
-            {(["tables", "relationships", "enums", "indexes", "interfaces"] as const).map((t) => (
+          <div className="flex gap-1 mb-4 border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto">
+            {tabs.map((t) => (
               <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`px-4 py-2 text-sm capitalize ${
-                  tab === t
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`px-4 py-2 text-sm whitespace-nowrap ${
+                  tab === t.key
                     ? "border-b-2 border-blue-600 font-medium"
                     : "text-zinc-500 hover:text-foreground"
                 }`}
               >
-                {t} ({schema[t]?.length || 0})
+                {t.label}{t.count != null ? ` (${t.count})` : ""}
               </button>
             ))}
-            <button
-              onClick={() => setTab("diagram")}
-              className={`px-4 py-2 text-sm capitalize ${
-                tab === "diagram"
-                  ? "border-b-2 border-blue-600 font-medium"
-                  : "text-zinc-500 hover:text-foreground"
-              }`}
-            >
-              Diagram
-            </button>
           </div>
 
-          {tab === "tables" && (
-            <div className="flex gap-6">
-              <div className="w-48 space-y-1 shrink-0">
-                {schema.tables.map((t) => (
-                  <button
-                    key={t.name}
-                    onClick={() => setSelectedTable(t.name)}
-                    className={`block w-full text-left px-3 py-1.5 rounded text-sm truncate ${
-                      selectedTable === t.name ? "bg-zinc-200 dark:bg-zinc-800 font-medium" : "hover:bg-zinc-100 dark:hover:bg-zinc-900"
-                    }`}
-                  >
-                    {t.name}
-                  </button>
-                ))}
-              </div>
-              <div className="flex-1">
-                {activeTable ? (
-                  <div>
-                    <h3 className="font-bold mb-1">{activeTable.name}</h3>
-                    <p className="text-xs text-zinc-500 mb-3">~{activeTable.estimatedRowCount.toLocaleString()} rows</p>
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b dark:border-zinc-800">
-                          <th className="text-left py-2 px-2">Column</th>
-                          <th className="text-left py-2 px-2">Type</th>
-                          <th className="text-left py-2 px-2">Nullable</th>
-                          <th className="text-left py-2 px-2">Key</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {activeTable.columns.map((c) => (
-                          <tr key={c.name} className="border-b dark:border-zinc-800">
-                            <td className="py-1.5 px-2 font-mono text-xs">{c.name}</td>
-                            <td className="py-1.5 px-2 text-xs">{c.udtName}</td>
-                            <td className="py-1.5 px-2 text-xs">{c.isNullable ? "yes" : "no"}</td>
-                            <td className="py-1.5 px-2 text-xs">
-                              {c.isPrimaryKey && <span className="text-amber-600">PK</span>}
-                              {c.isForeignKey && <span className="text-blue-600 ml-1">FK</span>}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="text-zinc-500 text-sm">Select a table to view its columns.</p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {tab === "relationships" && (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b dark:border-zinc-800">
-                  <th className="text-left py-2 px-2">From</th>
-                  <th className="text-left py-2 px-2">To</th>
-                </tr>
-              </thead>
-              <tbody>
-                {schema.relationships.map((r, i) => (
-                  <tr key={i} className="border-b dark:border-zinc-800">
-                    <td className="py-1.5 px-2 font-mono text-xs">{r.sourceTable}.{r.sourceColumn}</td>
-                    <td className="py-1.5 px-2 font-mono text-xs">{r.targetTable}.{r.targetColumn}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          {tab === "enums" && (
-            <div className="space-y-3">
-              {schema.enums.map((e) => (
-                <div key={e.name}>
-                  <h3 className="font-mono text-sm font-bold">{e.name}</h3>
-                  <p className="text-xs text-zinc-500">{e.values.join(", ")}</p>
-                </div>
-              ))}
-              {schema.enums.length === 0 && <p className="text-zinc-500 text-sm">No enums found.</p>}
-            </div>
-          )}
-
-          {tab === "indexes" && (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b dark:border-zinc-800">
-                  <th className="text-left py-2 px-2">Name</th>
-                  <th className="text-left py-2 px-2">Table</th>
-                  <th className="text-left py-2 px-2">Columns</th>
-                  <th className="text-left py-2 px-2">Type</th>
-                </tr>
-              </thead>
-              <tbody>
-                {schema.indexes.map((idx) => (
-                  <tr key={idx.name} className="border-b dark:border-zinc-800">
-                    <td className="py-1.5 px-2 font-mono text-xs">{idx.name}</td>
-                    <td className="py-1.5 px-2 text-xs">{idx.tableName}</td>
-                    <td className="py-1.5 px-2 font-mono text-xs">{idx.columns.join(", ")}</td>
-                    <td className="py-1.5 px-2 text-xs">
-                      {idx.isPrimary ? "PK" : idx.isUnique ? "Unique" : "Index"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          {tab === "interfaces" && (
-            <div className="space-y-6">
-              {schema.interfaces.map((iface) => (
-                <div key={iface.name}>
-                  <div className="flex items-baseline gap-3 mb-1">
-                    <h3 className="font-mono text-sm font-bold">interface {iface.name}</h3>
-                    <span className="text-xs text-zinc-500">table: {iface.tableName}</span>
-                  </div>
-                  {iface.associatedTables?.length > 0 && (
-                    <div className="flex gap-1.5 mb-2">
-                      <span className="text-xs text-zinc-400">Associated:</span>
-                      {iface.associatedTables.map((t) => (
-                        <span key={t} className="text-xs px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
-                          {t}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <pre className="text-xs bg-zinc-100 dark:bg-zinc-900 p-3 rounded overflow-x-auto">
-{`interface ${iface.name} {\n${iface.properties
-  .map((p) => `  ${p.name}${p.isOptional ? "?" : ""}: ${p.type};`)
-  .join("\n")}\n}`}
-                  </pre>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {tab === "diagram" && (
-            <SchemaDiagram tables={schema.tables} relationships={schema.relationships} />
-          )}
+          {tab === "tables" && <TablesTab tables={schema.tables} />}
+          {tab === "relationships" && <RelationshipsTab relationships={schema.relationships} />}
+          {tab === "enums" && <EnumsTab enums={schema.enums} />}
+          {tab === "indexes" && <IndexesTab indexes={schema.indexes} />}
+          {tab === "interfaces" && <InterfacesTab interfaces={schema.interfaces} />}
+          {tab === "diagram" && <SchemaDiagram tables={schema.tables} relationships={schema.relationships} />}
         </>
       )}
     </div>
