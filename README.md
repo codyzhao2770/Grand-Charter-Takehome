@@ -1,3 +1,17 @@
+## Features
+### Schema Extractor
+- Store comprehensive database information on a hosted file system
+- Enter any database credentials to establish connection for import
+- App will extract tables, relationships, enums, indexes, interfaces, as well as generate a full interactive schema diagram
+- Provides DB metrics and supports searching paginated data
+- Schema export as JSON
+- Natural language querying by integrating gpt-mini
+
+### File System
+- Full drag-and-drop upload and download functionality
+- File search and filtering functionality
+- Organized and clean UI designed with UX in mind
+
 ## Getting Started
 You need Docker running for step 1, and steps 1-3 must happen in order before step 4.
 
