@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email     String   @unique @db.VarChar(255)
+  name      String   @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  folders       Folder[]
+  files         File[]
+  dbConnections DbConnection[]
+
+  @@map("users")
+}
+
+model Folder {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @db.VarChar(255)
+  parentId  String?  @map("parent_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  parent        Folder?        @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children      Folder[]       @relation("FolderTree")
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  files         File[]
+  dbConnections DbConnection[]
+
+  @@index([userId, parentId])
+  @@map("folders")
+}
+
+model File {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @db.VarChar(255)
+  mimeType    String?  @map("mime_type") @db.VarChar(100)
+  size        BigInt   @default(0)
+  storagePath String   @map("storage_path") @db.VarChar(500)
+  folderId    String?  @map("folder_id") @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  folder Folder? @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, folderId])
+  @@map("files")
+}
+
+model DbConnection {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String    @db.VarChar(255)
+  host              String    @db.VarChar(255)
+  port              Int       @default(5432)
+  databaseName      String    @map("database_name") @db.VarChar(255)
+  username          String    @db.VarChar(255)
+  encryptedPassword String    @map("encrypted_password") @db.Text
+  folderId          String?   @map("folder_id") @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  cachedSchema      Json?     @map("cached_schema")
+  cachedDocs        Json?     @map("cached_docs")
+  lastExtractedAt   DateTime? @map("last_extracted_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  folder Folder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("db_connections")
+}
