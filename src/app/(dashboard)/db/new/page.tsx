@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useRefresh } from "@/components/layout/RefreshContext";
 
 export default function NewConnectionPage() {
   const router = useRouter();
+  const { triggerRefresh } = useRefresh();
   const [form, setForm] = useState({
     name: "",
     host: "",
@@ -38,6 +40,7 @@ export default function NewConnectionPage() {
       return;
     }
 
+    triggerRefresh();
     router.push(`/db/${data.data.id}`);
   }
 

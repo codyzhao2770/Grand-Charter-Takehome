@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useRefresh } from "./RefreshContext";
 
 interface FolderNode {
   id: string;
@@ -18,6 +19,7 @@ interface DbConnection {
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { refreshKey } = useRefresh();
   const [folders, setFolders] = useState<FolderNode[]>([]);
   const [connections, setConnections] = useState<DbConnection[]>([]);
 
@@ -30,7 +32,7 @@ export default function Sidebar() {
       .then((r) => r.json())
       .then((d) => setConnections(d.data || []))
       .catch(() => {});
-  }, []);
+  }, [refreshKey]);
 
   return (
     <aside className="w-64 border-r border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 flex flex-col h-full overflow-y-auto">

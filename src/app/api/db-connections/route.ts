@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
         database,
         user: username,
         password,
+        ssl: { rejectUnauthorized: false },
       });
     } catch (connError) {
       const message =

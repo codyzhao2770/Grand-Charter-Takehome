@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useRefresh } from "@/components/layout/RefreshContext";
 
 interface FileItem {
   id: string;
@@ -31,6 +32,7 @@ function formatSize(bytes: number) {
 export default function FolderPage() {
   const { folderId } = useParams<{ folderId: string }>();
   const router = useRouter();
+  const { triggerRefresh } = useRefresh();
   const [folder, setFolder] = useState<FolderDetail | null>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -66,6 +68,7 @@ export default function FolderPage() {
       body: JSON.stringify({ name, parentId: folderId }),
     });
     loadData();
+    triggerRefresh();
   }
 
   async function handleDeleteFile(id: string) {
@@ -77,6 +80,7 @@ export default function FolderPage() {
   async function handleDeleteFolder(id: string) {
     if (!confirm("Delete this folder and all its contents?")) return;
     await fetch(`/api/folders/${id}`, { method: "DELETE" });
+    triggerRefresh();
     // If deleting the current folder, navigate up
     if (id === folderId) {
       router.push(folder?.parentId ? `/files/${folder.parentId}` : "/files");

@@ -28,6 +28,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         database: connection.databaseName,
         user: connection.username,
         password,
+        ssl: { rejectUnauthorized: false },
       });
     } catch (extractError) {
       const message =

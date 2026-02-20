@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { useRefresh } from "@/components/layout/RefreshContext";
 
 interface FileItem {
   id: string;
@@ -28,6 +29,7 @@ function formatSize(bytes: number) {
 }
 
 export default function FilesPage() {
+  const { triggerRefresh } = useRefresh();
   const [files, setFiles] = useState<FileItem[]>([]);
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -54,6 +56,7 @@ export default function FilesPage() {
     await fetch("/api/files", { method: "POST", body: formData });
     setUploading(false);
     loadData();
+    triggerRefresh();
     e.target.value = "";
   }
 
@@ -66,6 +69,7 @@ export default function FilesPage() {
       body: JSON.stringify({ name }),
     });
     loadData();
+    triggerRefresh();
   }
 
   async function handleDeleteFile(id: string) {
@@ -78,6 +82,7 @@ export default function FilesPage() {
     if (!confirm("Delete this folder and all its contents?")) return;
     await fetch(`/api/folders/${id}`, { method: "DELETE" });
     loadData();
+    triggerRefresh();
   }
 
   async function handleRenameFile(id: string, currentName: string) {
@@ -100,6 +105,7 @@ export default function FilesPage() {
       body: JSON.stringify({ name }),
     });
     loadData();
+    triggerRefresh();
   }
 
   return (
