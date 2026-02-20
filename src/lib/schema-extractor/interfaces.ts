@@ -141,10 +141,22 @@ export function inferInterfaces(
       }
     }
 
+    // Collect associated tables (FK targets + reverse sources)
+    const associated = new Set<string>();
+    for (const col of table.columns) {
+      const fkTarget = fkTargets.get(`${table.name}.${col.name}`);
+      if (fkTarget) associated.add(fkTarget.targetTable);
+    }
+    for (const rev of reverses) {
+      associated.add(rev.sourceTable);
+    }
+    associated.delete(table.name);
+
     return {
       name: pascalCase(table.name),
       tableName: table.name,
       properties,
+      associatedTables: [...associated],
     };
   });
 }

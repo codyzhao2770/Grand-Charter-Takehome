@@ -1,8 +1,12 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import dynamic from "next/dynamic";
+import { useRefresh } from "@/components/layout/RefreshContext";
+
+const SchemaDiagram = dynamic(() => import("@/components/schema/SchemaDiagram"), { ssr: false });
 
 interface SchemaTable {
   name: string;
@@ -29,17 +33,19 @@ interface ConnectionDetail {
     relationships: { sourceTable: string; sourceColumn: string; targetTable: string; targetColumn: string }[];
     enums: { name: string; values: string[] }[];
     indexes: { name: string; tableName: string; columns: string[]; isUnique: boolean; isPrimary: boolean }[];
-    interfaces: { name: string; properties: { name: string; type: string; isOptional: boolean }[] }[];
+    interfaces: { name: string; tableName: string; associatedTables: string[]; properties: { name: string; type: string; isOptional: boolean }[] }[];
   } | null;
   lastExtractedAt: string | null;
 }
 
 export default function ConnectionPage() {
   const { connectionId } = useParams<{ connectionId: string }>();
+  const router = useRouter();
+  const { triggerRefresh } = useRefresh();
   const [conn, setConn] = useState<ConnectionDetail | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
-  const [tab, setTab] = useState<"tables" | "relationships" | "enums" | "indexes" | "interfaces">("tables");
+  const [tab, setTab] = useState<"tables" | "relationships" | "enums" | "indexes" | "interfaces" | "diagram">("tables");
 
   const loadData = useCallback(() => {
     fetch(`/api/db-connections/${connectionId}`)
@@ -56,6 +62,13 @@ export default function ConnectionPage() {
     await fetch(`/api/db-connections/${connectionId}/extract`, { method: "POST" });
     setExtracting(false);
     loadData();
+  }
+
+  async function handleDelete() {
+    if (!confirm(`Delete connection "${conn?.name}"? This cannot be undone.`)) return;
+    await fetch(`/api/db-connections/${connectionId}`, { method: "DELETE" });
+    triggerRefresh();
+    router.push("/files");
   }
 
   function handleExportJSON() {
@@ -110,6 +123,12 @@ export default function ConnectionPage() {
               </Link>
             </>
           )}
+          <button
+            onClick={handleDelete}
+            className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            Delete
+          </button>
         </div>
       </div>
 
@@ -133,6 +152,16 @@ export default function ConnectionPage() {
                 {t} ({schema[t]?.length || 0})
               </button>
             ))}
+            <button
+              onClick={() => setTab("diagram")}
+              className={`px-4 py-2 text-sm capitalize ${
+                tab === "diagram"
+                  ? "border-b-2 border-blue-600 font-medium"
+                  : "text-zinc-500 hover:text-foreground"
+              }`}
+            >
+              Diagram
+            </button>
           </div>
 
           {tab === "tables" && (
@@ -246,7 +275,20 @@ export default function ConnectionPage() {
             <div className="space-y-6">
               {schema.interfaces.map((iface) => (
                 <div key={iface.name}>
-                  <h3 className="font-mono text-sm font-bold mb-1">interface {iface.name}</h3>
+                  <div className="flex items-baseline gap-3 mb-1">
+                    <h3 className="font-mono text-sm font-bold">interface {iface.name}</h3>
+                    <span className="text-xs text-zinc-500">table: {iface.tableName}</span>
+                  </div>
+                  {iface.associatedTables?.length > 0 && (
+                    <div className="flex gap-1.5 mb-2">
+                      <span className="text-xs text-zinc-400">Associated:</span>
+                      {iface.associatedTables.map((t) => (
+                        <span key={t} className="text-xs px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <pre className="text-xs bg-zinc-100 dark:bg-zinc-900 p-3 rounded overflow-x-auto">
 {`interface ${iface.name} {\n${iface.properties
   .map((p) => `  ${p.name}${p.isOptional ? "?" : ""}: ${p.type};`)
@@ -255,6 +297,10 @@ export default function ConnectionPage() {
                 </div>
               ))}
             </div>
+          )}
+
+          {tab === "diagram" && (
+            <SchemaDiagram tables={schema.tables} relationships={schema.relationships} />
           )}
         </>
       )}

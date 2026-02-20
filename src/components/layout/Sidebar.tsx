@@ -42,6 +42,15 @@ export default function Sidebar() {
         </Link>
       </div>
 
+      <div className="p-3 border-t border-zinc-200 dark:border-zinc-800">
+        <Link
+          href="/search"
+          className="block px-3 py-2 rounded text-sm hover:bg-zinc-100 dark:hover:bg-zinc-900"
+        >
+          Search
+        </Link>
+      </div>
+
       <nav className="flex-1 p-3 space-y-1">
         <Link
           href="/files"
@@ -94,15 +103,6 @@ export default function Sidebar() {
           + Add Connection
         </Link>
       </nav>
-
-      <div className="p-3 border-t border-zinc-200 dark:border-zinc-800">
-        <Link
-          href="/search"
-          className="block px-3 py-2 rounded text-sm hover:bg-zinc-100 dark:hover:bg-zinc-900"
-        >
-          Search
-        </Link>
-      </div>
     </aside>
   );
 }

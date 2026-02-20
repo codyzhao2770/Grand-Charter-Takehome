@@ -56,6 +56,7 @@ export interface InferredInterface {
   name: string;
   tableName: string;
   properties: InterfaceProperty[];
+  associatedTables: string[];
 }
 
 export interface ExtractedSchema {
