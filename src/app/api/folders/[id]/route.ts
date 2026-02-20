@@ -21,7 +21,22 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return errorResponse("NOT_FOUND", "Folder not found", 404);
     }
 
-    return successResponse(folder);
+    // Build breadcrumb path (ancestors from root to current folder's parent)
+    const breadcrumbs: { id: string; name: string }[] = [];
+    if (folder.parentId) {
+      const chain = await prisma.$queryRaw<{ id: string; name: string }[]>`
+        WITH RECURSIVE chain AS (
+          SELECT id, name, parent_id FROM folders WHERE id = ${folder.parentId}::uuid
+          UNION ALL
+          SELECT f.id, f.name, f.parent_id FROM folders f JOIN chain c ON f.id = c.parent_id
+        )
+        SELECT id, name FROM chain
+      `;
+      // chain comes in child-first order, reverse for root-first
+      breadcrumbs.push(...chain.reverse());
+    }
+
+    return successResponse({ ...folder, breadcrumbs });
   } catch (error) {
     console.error("GET /api/folders/[id] error:", error);
     return errorResponse("INTERNAL_ERROR", "Failed to get folder", 500);

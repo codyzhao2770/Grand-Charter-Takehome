@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRefresh } from "@/components/layout/RefreshContext";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { useConfirmDialog } from "@/components/ui/useDialog";
 import TablesTab from "@/components/schema/TablesTab";
 import RelationshipsTab from "@/components/schema/RelationshipsTab";
 import EnumsTab from "@/components/schema/EnumsTab";
@@ -52,6 +54,8 @@ export default function ConnectionPage() {
   const [conn, setConn] = useState<ConnectionDetail | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [tab, setTab] = useState<TabKey>("tables");
+  const [toast, setToast] = useState<string | null>(null);
+  const confirmDialog = useConfirmDialog();
 
   const loadData = useCallback(() => {
     fetch(`/api/db-connections/${connectionId}`)
@@ -65,13 +69,23 @@ export default function ConnectionPage() {
 
   async function handleExtract() {
     setExtracting(true);
-    await fetch(`/api/db-connections/${connectionId}/extract`, { method: "POST" });
+    const res = await fetch(`/api/db-connections/${connectionId}/extract`, { method: "POST" });
     setExtracting(false);
     loadData();
+    if (res.ok) {
+      setToast("Schema refreshed successfully");
+      setTimeout(() => setToast(null), 3000);
+    }
   }
 
   async function handleDelete() {
-    if (!confirm(`Delete connection "${conn?.name}"? This cannot be undone.`)) return;
+    const ok = await confirmDialog.confirm({
+      title: "Delete Connection",
+      message: `Delete connection "${conn?.name}"? This cannot be undone.`,
+      confirmLabel: "Delete",
+      variant: "danger",
+    });
+    if (!ok) return;
     await fetch(`/api/db-connections/${connectionId}`, { method: "DELETE" });
     triggerRefresh();
     router.push("/files");
@@ -175,6 +189,22 @@ export default function ConnectionPage() {
           {tab === "interfaces" && <InterfacesTab interfaces={schema.interfaces} />}
           {tab === "diagram" && <SchemaDiagram tables={schema.tables} relationships={schema.relationships} />}
         </>
+      )}
+
+      <ConfirmDialog
+        open={confirmDialog.state.open}
+        title={confirmDialog.state.title}
+        message={confirmDialog.state.message}
+        confirmLabel={confirmDialog.state.confirmLabel}
+        variant={confirmDialog.state.variant}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={confirmDialog.onCancel}
+      />
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm">
+          {toast}
+        </div>
       )}
     </div>
   );

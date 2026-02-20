@@ -9,4 +9,4 @@ You need Docker running for step 1, and steps 1-3 must happen in order before st
 
 4. `npm run dev` — Starts the Next.js development server on localhost:3000 with hot reload. This serves both the API routes and the frontend UI.
 
-- `npm test` — Runs Jest against all 54 test suites (folder/file API tests, schema extractor tests, AI safety tests). These use mocked dependencies so they don't need a running database.
+`npm test` — Runs Jest against all 54 test suites (folder/file API tests, schema extractor tests, AI safety tests). These use mocked dependencies so they don't need a running database.

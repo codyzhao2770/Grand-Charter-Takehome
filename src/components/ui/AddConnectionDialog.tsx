@@ -1,12 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { useRefresh } from "@/components/layout/RefreshContext";
+import Modal from "./Modal";
 
-export default function NewConnectionPage() {
-  const router = useRouter();
-  const { triggerRefresh } = useRefresh();
+interface AddConnectionDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onCreated: (id: string) => void;
+}
+
+export default function AddConnectionDialog({ open, onClose, onCreated }: AddConnectionDialogProps) {
   const [form, setForm] = useState({
     name: "",
     host: "",
@@ -17,6 +20,18 @@ export default function NewConnectionPage() {
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  function resetForm() {
+    setForm({ name: "", host: "", port: "5432", database: "", username: "", password: "" });
+    setError("");
+    setLoading(false);
+  }
+
+  function handleClose() {
+    if (loading) return;
+    resetForm();
+    onClose();
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -40,15 +55,16 @@ export default function NewConnectionPage() {
       return;
     }
 
-    triggerRefresh();
-    router.push(`/db/${data.data.id}`);
+    resetForm();
+    onCreated(data.data.id);
   }
 
-  return (
-    <div className="max-w-lg">
-      <h1 className="text-2xl font-bold mb-6">Add Database Connection</h1>
+  if (!open) return null;
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+  return (
+    <Modal open={open} onClose={handleClose} wide>
+      <h2 className="text-lg font-bold mb-4">Add Database Connection</h2>
+      <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="block text-sm font-medium mb-1">Connection Name</label>
           <input
@@ -56,12 +72,12 @@ export default function NewConnectionPage() {
             required
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
-            className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded bg-white dark:bg-zinc-900"
+            className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-700 rounded bg-white dark:bg-zinc-900"
             placeholder="My Database"
           />
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-2">
           <div className="col-span-2">
             <label className="block text-sm font-medium mb-1">Host</label>
             <input
@@ -69,7 +85,7 @@ export default function NewConnectionPage() {
               required
               value={form.host}
               onChange={(e) => setForm({ ...form, host: e.target.value })}
-              className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded bg-white dark:bg-zinc-900"
+              className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-700 rounded bg-white dark:bg-zinc-900"
               placeholder="localhost"
             />
           </div>
@@ -80,7 +96,7 @@ export default function NewConnectionPage() {
               required
               value={form.port}
               onChange={(e) => setForm({ ...form, port: e.target.value })}
-              className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded bg-white dark:bg-zinc-900"
+              className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-700 rounded bg-white dark:bg-zinc-900"
             />
           </div>
         </div>
@@ -92,7 +108,7 @@ export default function NewConnectionPage() {
             required
             value={form.database}
             onChange={(e) => setForm({ ...form, database: e.target.value })}
-            className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded bg-white dark:bg-zinc-900"
+            className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-700 rounded bg-white dark:bg-zinc-900"
             placeholder="my_database"
           />
         </div>
@@ -104,7 +120,7 @@ export default function NewConnectionPage() {
             required
             value={form.username}
             onChange={(e) => setForm({ ...form, username: e.target.value })}
-            className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded bg-white dark:bg-zinc-900"
+            className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-700 rounded bg-white dark:bg-zinc-900"
             placeholder="postgres"
           />
         </div>
@@ -116,22 +132,30 @@ export default function NewConnectionPage() {
             required
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
-            className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded bg-white dark:bg-zinc-900"
+            className="w-full px-3 py-2 text-sm border border-zinc-300 dark:border-zinc-700 rounded bg-white dark:bg-zinc-900"
           />
         </div>
 
-        {error && (
-          <p className="text-red-600 text-sm">{error}</p>
-        )}
+        {error && <p className="text-red-600 text-sm">{error}</p>}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-        >
-          {loading ? "Testing & Saving..." : "Test & Save Connection"}
-        </button>
+        <div className="flex justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onClick={handleClose}
+            disabled={loading}
+            className="px-4 py-2 text-sm rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+          >
+            {loading ? "Testing & Saving..." : "Test & Save"}
+          </button>
+        </div>
       </form>
-    </div>
+    </Modal>
   );
 }

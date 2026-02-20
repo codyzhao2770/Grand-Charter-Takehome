@@ -2,7 +2,13 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useRefresh } from "@/components/layout/RefreshContext";
+import ContextMenu, { type ContextMenuItem } from "@/components/ui/ContextMenu";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import PromptDialog from "@/components/ui/PromptDialog";
+import { useConfirmDialog, usePromptDialog } from "@/components/ui/useDialog";
+import Pagination from "@/components/ui/Pagination";
 
 interface FileItem {
   id: string;
@@ -28,11 +34,26 @@ function formatSize(bytes: number) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
+interface CtxMenu {
+  x: number;
+  y: number;
+  type: "folder" | "file";
+  id: string;
+  name: string;
+}
+
 export default function FilesPage() {
+  const router = useRouter();
   const { triggerRefresh } = useRefresh();
   const [files, setFiles] = useState<FileItem[]>([]);
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
+  const [folderPage, setFolderPage] = useState(0);
+  const [filePage, setFilePage] = useState(0);
+
+  const confirmDialog = useConfirmDialog();
+  const promptDialog = usePromptDialog();
 
   const loadData = useCallback(() => {
     fetch("/api/folders")
@@ -61,7 +82,10 @@ export default function FilesPage() {
   }
 
   async function handleCreateFolder() {
-    const name = prompt("Folder name:");
+    const name = await promptDialog.prompt({
+      title: "New Folder",
+      placeholder: "Folder name",
+    });
     if (!name) return;
     await fetch("/api/folders", {
       method: "POST",
@@ -73,20 +97,35 @@ export default function FilesPage() {
   }
 
   async function handleDeleteFile(id: string) {
-    if (!confirm("Delete this file?")) return;
+    const ok = await confirmDialog.confirm({
+      title: "Delete File",
+      message: "Are you sure you want to delete this file?",
+      confirmLabel: "Delete",
+      variant: "danger",
+    });
+    if (!ok) return;
     await fetch(`/api/files/${id}`, { method: "DELETE" });
     loadData();
   }
 
   async function handleDeleteFolder(id: string) {
-    if (!confirm("Delete this folder and all its contents?")) return;
+    const ok = await confirmDialog.confirm({
+      title: "Delete Folder",
+      message: "Delete this folder and all its contents? This cannot be undone.",
+      confirmLabel: "Delete",
+      variant: "danger",
+    });
+    if (!ok) return;
     await fetch(`/api/folders/${id}`, { method: "DELETE" });
     loadData();
     triggerRefresh();
   }
 
   async function handleRenameFile(id: string, currentName: string) {
-    const name = prompt("New name:", currentName);
+    const name = await promptDialog.prompt({
+      title: "Rename File",
+      defaultValue: currentName,
+    });
     if (!name || name === currentName) return;
     await fetch(`/api/files/${id}`, {
       method: "PATCH",
@@ -97,7 +136,10 @@ export default function FilesPage() {
   }
 
   async function handleRenameFolder(id: string, currentName: string) {
-    const name = prompt("New name:", currentName);
+    const name = await promptDialog.prompt({
+      title: "Rename Folder",
+      defaultValue: currentName,
+    });
     if (!name || name === currentName) return;
     await fetch(`/api/folders/${id}`, {
       method: "PATCH",
@@ -107,6 +149,37 @@ export default function FilesPage() {
     loadData();
     triggerRefresh();
   }
+
+  function handleContextMenu(e: React.MouseEvent, type: "folder" | "file", id: string, name: string) {
+    e.preventDefault();
+    setCtxMenu({ x: e.clientX, y: e.clientY, type, id, name });
+  }
+
+  const ctxItems: ContextMenuItem[] = ctxMenu
+    ? ctxMenu.type === "folder"
+      ? [
+          { label: "Open", onClick: () => router.push(`/files/${ctxMenu.id}`) },
+          { label: "Rename", onClick: () => handleRenameFolder(ctxMenu.id, ctxMenu.name) },
+          { label: "Delete", onClick: () => handleDeleteFolder(ctxMenu.id), variant: "danger" },
+        ]
+      : [
+          { label: "Download", onClick: () => { window.location.href = `/api/files/${ctxMenu.id}`; } },
+          { label: "Preview", onClick: () => { window.open(`/api/files/${ctxMenu.id}/preview`, "_blank"); } },
+          { label: "Rename", onClick: () => handleRenameFile(ctxMenu.id, ctxMenu.name) },
+          { label: "Delete", onClick: () => handleDeleteFile(ctxMenu.id), variant: "danger" },
+        ]
+    : [];
+
+  const FOLDER_PAGE_SIZE = 12;
+  const FILE_PAGE_SIZE = 12;
+
+  const folderTotalPages = Math.ceil(folders.length / FOLDER_PAGE_SIZE);
+  const safeFolderPage = Math.min(folderPage, Math.max(0, folderTotalPages - 1));
+  const pagedFolders = folders.slice(safeFolderPage * FOLDER_PAGE_SIZE, (safeFolderPage + 1) * FOLDER_PAGE_SIZE);
+
+  const fileTotalPages = Math.ceil(files.length / FILE_PAGE_SIZE);
+  const safeFilePage = Math.min(filePage, Math.max(0, fileTotalPages - 1));
+  const pagedFiles = files.slice(safeFilePage * FILE_PAGE_SIZE, (safeFilePage + 1) * FILE_PAGE_SIZE);
 
   return (
     <div>
@@ -132,10 +205,14 @@ export default function FilesPage() {
 
       {folders.length > 0 && (
         <div className="mb-6">
-          <h2 className="text-sm font-semibold text-zinc-500 mb-2 uppercase tracking-wider">Folders</h2>
+          <h2 className="text-sm font-semibold text-zinc-500 mb-2 uppercase tracking-wider">Folders ({folders.length})</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {folders.map((f) => (
-              <div key={f.id} className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group">
+            {pagedFolders.map((f) => (
+              <div
+                key={f.id}
+                onContextMenu={(e) => handleContextMenu(e, "folder", f.id, f.name)}
+                className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group"
+              >
                 <Link href={`/files/${f.id}`} className="block font-medium truncate">
                   {f.name}
                 </Link>
@@ -149,15 +226,20 @@ export default function FilesPage() {
               </div>
             ))}
           </div>
+          <Pagination page={safeFolderPage} totalPages={folderTotalPages} onPageChange={setFolderPage} totalItems={folders.length} pageSize={FOLDER_PAGE_SIZE} />
         </div>
       )}
 
       {files.length > 0 && (
         <div>
-          <h2 className="text-sm font-semibold text-zinc-500 mb-2 uppercase tracking-wider">Files</h2>
+          <h2 className="text-sm font-semibold text-zinc-500 mb-2 uppercase tracking-wider">Files ({files.length})</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {files.map((f) => (
-              <div key={f.id} className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group">
+            {pagedFiles.map((f) => (
+              <div
+                key={f.id}
+                onContextMenu={(e) => handleContextMenu(e, "file", f.id, f.name)}
+                className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group"
+              >
                 <p className="font-medium truncate">{f.name}</p>
                 <p className="text-xs text-zinc-500 mt-1">
                   {f.mimeType} &middot; {formatSize(f.size)}
@@ -171,8 +253,37 @@ export default function FilesPage() {
               </div>
             ))}
           </div>
+          <Pagination page={safeFilePage} totalPages={fileTotalPages} onPageChange={setFilePage} totalItems={files.length} pageSize={FILE_PAGE_SIZE} />
         </div>
       )}
+
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          items={ctxItems}
+          onClose={() => setCtxMenu(null)}
+        />
+      )}
+
+      <ConfirmDialog
+        open={confirmDialog.state.open}
+        title={confirmDialog.state.title}
+        message={confirmDialog.state.message}
+        confirmLabel={confirmDialog.state.confirmLabel}
+        variant={confirmDialog.state.variant}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={confirmDialog.onCancel}
+      />
+      <PromptDialog
+        open={promptDialog.state.open}
+        title={promptDialog.state.title}
+        defaultValue={promptDialog.state.defaultValue}
+        placeholder={promptDialog.state.placeholder}
+        confirmLabel={promptDialog.state.confirmLabel}
+        onConfirm={promptDialog.onConfirm}
+        onCancel={promptDialog.onCancel}
+      />
     </div>
   );
 }
