@@ -3,10 +3,26 @@ import { createMockPrisma, createMockRequest, sampleFile } from "@/test/helpers"
 const mockPrisma = createMockPrisma();
 jest.mock("@/lib/db", () => ({ prisma: mockPrisma }));
 
-const mockSaveFileStream = jest.fn().mockResolvedValue("/uploads/test/path");
+const mockEnsureUploadDir = jest.fn().mockResolvedValue("/uploads/test");
+const mockDeleteFile = jest.fn().mockResolvedValue(undefined);
 jest.mock("@/lib/storage", () => ({
-  saveFileStream: (...args: unknown[]) => mockSaveFileStream(...args),
+  ensureUploadDir: (...args: unknown[]) => mockEnsureUploadDir(...args),
+  deleteFile: (...args: unknown[]) => mockDeleteFile(...args),
 }));
+
+const mockCreateWriteStream = jest.fn();
+jest.mock("fs", () => {
+  const { PassThrough } = require("stream");
+  return {
+    ...jest.requireActual("fs"),
+    createWriteStream: (...args: unknown[]) => {
+      mockCreateWriteStream(...args);
+      const pt = new PassThrough();
+      pt.on("data", () => {});
+      return pt;
+    },
+  };
+});
 
 jest.mock("crypto", () => ({
   ...jest.requireActual("crypto"),
@@ -71,7 +87,7 @@ describe("GET /api/files", () => {
 describe("POST /api/files", () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it("should upload a file", async () => {
+  it("should upload a file via streaming", async () => {
     const fileBlob = new File(["hello world"], "test.txt", {
       type: "text/plain",
     });
@@ -92,7 +108,7 @@ describe("POST /api/files", () => {
 
     expect(res.status).toBe(201);
     expect(body.data.name).toBe("test.txt");
-    expect(mockSaveFileStream).toHaveBeenCalled();
+    expect(mockCreateWriteStream).toHaveBeenCalled();
   });
 
   it("should reject request without file", async () => {
@@ -122,5 +138,16 @@ describe("POST /api/files", () => {
     const res = await POST(req as any);
 
     expect(res.status).toBe(404);
+  });
+
+  it("should reject non-multipart content type", async () => {
+    const req = new Request("http://localhost:3000/api/files", {
+      method: "POST",
+      body: JSON.stringify({ file: "test" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await POST(req as any);
+
+    expect(res.status).toBe(400);
   });
 });
