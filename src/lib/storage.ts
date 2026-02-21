@@ -1,5 +1,8 @@
 import fs from "fs/promises";
+import { createWriteStream } from "fs";
 import path from "path";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 import { UPLOAD_DIR } from "./constants";
 
 export async function ensureUploadDir(userId: string): Promise<string> {
@@ -17,6 +20,20 @@ export async function saveFile(
   await ensureUploadDir(userId);
   const storagePath = path.join(UPLOAD_DIR, userId, `${fileId}-${fileName}`);
   await fs.writeFile(storagePath, buffer);
+  return storagePath;
+}
+
+export async function saveFileStream(
+  userId: string,
+  fileId: string,
+  fileName: string,
+  stream: ReadableStream<Uint8Array>
+): Promise<string> {
+  await ensureUploadDir(userId);
+  const storagePath = path.join(UPLOAD_DIR, userId, `${fileId}-${fileName}`);
+  const nodeStream = Readable.fromWeb(stream as import("stream/web").ReadableStream);
+  const writeStream = createWriteStream(storagePath);
+  await pipeline(nodeStream, writeStream);
   return storagePath;
 }
 

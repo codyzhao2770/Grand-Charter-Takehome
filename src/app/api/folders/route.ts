@@ -1,25 +1,34 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
-import { successResponse, errorResponse } from "@/lib/api-response";
+import { paginatedResponse, errorResponse, parsePaginationParams } from "@/lib/api-response";
 import { DEFAULT_USER_ID } from "@/lib/constants";
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const parentId = searchParams.get("parentId");
+    const { limit, offset, sortBy, sortOrder } = parsePaginationParams(searchParams);
 
-    const folders = await prisma.folder.findMany({
-      where: {
-        userId: DEFAULT_USER_ID,
-        parentId: parentId || null,
-      },
-      orderBy: { name: "asc" },
-      include: {
-        _count: { select: { children: true, files: true } },
-      },
-    });
+    const orderByField = sortBy === "createdAt" ? "createdAt" : "name";
+    const where = {
+      userId: DEFAULT_USER_ID,
+      parentId: parentId || null,
+    };
 
-    return successResponse(folders);
+    const [folders, total] = await Promise.all([
+      prisma.folder.findMany({
+        where,
+        orderBy: { [orderByField]: sortOrder },
+        take: limit,
+        skip: offset,
+        include: {
+          _count: { select: { children: true, files: true } },
+        },
+      }),
+      prisma.folder.count({ where }),
+    ]);
+
+    return paginatedResponse(folders, total, limit, offset);
   } catch (error) {
     console.error("GET /api/folders error:", error);
     return errorResponse("INTERNAL_ERROR", "Failed to list folders", 500);

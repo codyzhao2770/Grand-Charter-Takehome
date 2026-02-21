@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRefresh } from "@/components/layout/RefreshContext";
@@ -31,6 +31,7 @@ export default function AllConnectionsPage() {
   const { refreshKey, triggerRefresh } = useRefresh();
   const toast = useToast();
   const [connections, setConnections] = useState<DbConnection[]>([]);
+  const [total, setTotal] = useState(0);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<SortOption>("name-asc");
@@ -39,34 +40,24 @@ export default function AllConnectionsPage() {
 
   const confirmDialog = useConfirmDialog();
 
-  const loadData = useCallback(() => {
-    fetch("/api/db-connections")
-      .then((r) => r.json())
-      .then((d) => setConnections(d.data || []));
-  }, []);
+  const loadData = useCallback(async () => {
+    let sortBy = "name";
+    let sortOrder = "asc";
+    switch (sort) {
+      case "name-desc": sortBy = "name"; sortOrder = "desc"; break;
+      case "recent": sortBy = "createdAt"; sortOrder = "desc"; break;
+      case "oldest": sortBy = "createdAt"; sortOrder = "asc"; break;
+    }
+    const res = await fetch(
+      `/api/db-connections?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}&sortBy=${sortBy}&sortOrder=${sortOrder}`
+    ).then(r => r.json());
+    setConnections(res.data || []);
+    setTotal(res.pagination?.total ?? 0);
+  }, [page, sort]);
 
   useEffect(() => {
     loadData();
   }, [loadData, refreshKey]);
-
-  const sortedConnections = useMemo(() => {
-    const sorted = [...connections];
-    sorted.sort((a, b) => {
-      switch (sort) {
-        case "name-asc":
-          return a.name.localeCompare(b.name);
-        case "name-desc":
-          return b.name.localeCompare(a.name);
-        case "recent":
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-        case "oldest":
-          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-        default:
-          return 0;
-      }
-    });
-    return sorted;
-  }, [connections, sort]);
 
   async function handleDelete(id: string) {
     const ok = await confirmDialog.confirm({
@@ -97,9 +88,9 @@ export default function AllConnectionsPage() {
     setCtxMenu({ x: e.clientX, y: e.clientY, id, name });
   }
 
-  const totalPages = Math.ceil(sortedConnections.length / PAGE_SIZE);
+  const totalPages = Math.ceil(total / PAGE_SIZE);
   const safePage = Math.min(page, Math.max(0, totalPages - 1));
-  const paged = sortedConnections.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+  const paged = connections;
 
   const ctxItems: ContextMenuItem[] = ctxMenu
     ? [
@@ -203,7 +194,7 @@ export default function AllConnectionsPage() {
         </div>
       </div>
 
-      {connections.length === 0 && (
+      {total === 0 && connections.length === 0 && (
         <p className="text-zinc-500 text-sm">No database connections yet. Add one to get started.</p>
       )}
 
@@ -217,7 +208,7 @@ export default function AllConnectionsPage() {
         page={safePage}
         totalPages={totalPages}
         onPageChange={setPage}
-        totalItems={sortedConnections.length}
+        totalItems={total}
         pageSize={PAGE_SIZE}
       />
 

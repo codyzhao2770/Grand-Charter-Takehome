@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useRefresh } from "@/components/layout/RefreshContext";
@@ -16,69 +16,134 @@ import FileBrowserList from "@/components/files/FileBrowserList";
 import DropOverlay from "@/components/files/DropOverlay";
 import { useItemActions } from "@/hooks/useItemActions";
 import { useFileDragDrop } from "@/hooks/useFileDragDrop";
-import type { FolderDetail, GridItem, CtxMenu } from "@/lib/types";
+import type { FileItem, FolderItem, GridItem, CtxMenu, ChildFolder } from "@/lib/types";
 
 const PAGE_SIZE = 12;
+
+interface FolderMeta {
+  id: string;
+  name: string;
+  parentId: string | null;
+  breadcrumbs: { id: string; name: string }[];
+}
+
+function getSortQuery(sort: SortOption): string {
+  switch (sort) {
+    case "name-asc":  return "sortBy=name&sortOrder=asc";
+    case "name-desc": return "sortBy=name&sortOrder=desc";
+    case "recent":    return "sortBy=createdAt&sortOrder=desc";
+    case "oldest":    return "sortBy=createdAt&sortOrder=asc";
+    default:          return "sortBy=name&sortOrder=asc";
+  }
+}
 
 export default function FolderPage() {
   const { folderId } = useParams<{ folderId: string }>();
   const router = useRouter();
   const { refreshKey } = useRefresh();
-  const [folder, setFolder] = useState<FolderDetail | null>(null);
+  const [folderMeta, setFolderMeta] = useState<FolderMeta | null>(null);
+  const [children, setChildren] = useState<ChildFolder[]>([]);
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const [total, setTotal] = useState(0);
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<SortOption>("name-asc");
   const [view, setView] = useState<ViewMode>("grid");
   const [showUpload, setShowUpload] = useState(false);
 
-  const loadData = useCallback(() => {
-    fetch(`/api/folders/${folderId}`)
-      .then((r) => r.json())
-      .then((d) => setFolder(d.data || null));
+  const totalsRef = useRef({ folders: 0, files: 0 });
+
+  const loadMeta = useCallback(async () => {
+    const res = await fetch(`/api/folders/${folderId}`).then(r => r.json());
+    if (res.data) {
+      setFolderMeta({
+        id: res.data.id,
+        name: res.data.name,
+        parentId: res.data.parentId,
+        breadcrumbs: res.data.breadcrumbs ?? [],
+      });
+    }
   }, [folderId]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData, refreshKey]);
+  const loadData = useCallback(async () => {
+    const offset = page * PAGE_SIZE;
+    const sq = getSortQuery(sort);
+    const ft = totalsRef.current.folders;
 
-  const actions = useItemActions(loadData);
-  const dragDrop = useFileDragDrop(loadData, folderId);
+    let fOffset = 0, fLimit = 0;
+    let fiOffset = 0, fiLimit = 0;
+
+    if (page === 0) {
+      fLimit = PAGE_SIZE;
+      fiLimit = PAGE_SIZE;
+    } else if (offset < ft) {
+      fOffset = offset;
+      fLimit = Math.min(PAGE_SIZE, ft - offset);
+      fiOffset = 0;
+      fiLimit = PAGE_SIZE - fLimit;
+    } else {
+      fiOffset = offset - ft;
+      fiLimit = PAGE_SIZE;
+    }
+
+    const [fRes, fiRes] = await Promise.all([
+      fLimit > 0
+        ? fetch(`/api/folders?parentId=${folderId}&limit=${fLimit}&offset=${fOffset}&${sq}`).then(r => r.json())
+        : null,
+      fiLimit > 0
+        ? fetch(`/api/files?folderId=${folderId}&limit=${fiLimit}&offset=${fiOffset}&${sq}`).then(r => r.json())
+        : null,
+    ]);
+
+    const newFolders: ChildFolder[] = fRes?.data ?? [];
+    const newFiles: FileItem[] = fiRes?.data ?? [];
+    const newFT = fRes?.pagination?.total ?? totalsRef.current.folders;
+    const newFiT = fiRes?.pagination?.total ?? totalsRef.current.files;
+    totalsRef.current = { folders: newFT, files: newFiT };
+
+    if (page === 0) {
+      const foldersToShow = newFolders.slice(0, PAGE_SIZE);
+      const remaining = PAGE_SIZE - foldersToShow.length;
+      setChildren(foldersToShow);
+      setFiles(remaining > 0 ? newFiles.slice(0, remaining) : []);
+    } else {
+      setChildren(newFolders);
+      setFiles(newFiles);
+    }
+    setTotal(newFT + newFiT);
+  }, [page, sort, folderId]);
+
+  useEffect(() => {
+    totalsRef.current = { folders: 0, files: 0 };
+    setPage(0);
+  }, [refreshKey]);
+
+  useEffect(() => {
+    loadMeta();
+    loadData();
+  }, [loadMeta, loadData, refreshKey]);
+
+  const reloadAll = useCallback(async () => {
+    await Promise.all([loadMeta(), loadData()]);
+  }, [loadMeta, loadData]);
+
+  const actions = useItemActions(reloadAll);
+  const dragDrop = useFileDragDrop(reloadAll, folderId);
 
   const handleDeleteFolder = useCallback(
     async (id: string) => {
       await actions.deleteFolder(id);
       if (id === folderId) {
-        router.push(folder?.parentId ? `/files/${folder.parentId}` : "/files");
+        router.push(folderMeta?.parentId ? `/files/${folderMeta.parentId}` : "/files");
       }
     },
-    [actions, folderId, folder?.parentId, router]
+    [actions, folderId, folderMeta?.parentId, router]
   );
 
-  const sortedItems = useMemo(() => {
-    if (!folder) return [];
-    const items: GridItem[] = [
-      ...folder.children.map((c) => ({ kind: "folder" as const, data: c })),
-      ...folder.files.map((f) => ({ kind: "file" as const, data: f })),
-    ];
-
-    items.sort((a, b) => {
-      if (a.kind !== b.kind) return a.kind === "folder" ? -1 : 1;
-      switch (sort) {
-        case "name-asc":
-          return a.data.name.localeCompare(b.data.name);
-        case "name-desc":
-          return b.data.name.localeCompare(a.data.name);
-        case "recent":
-          return new Date(b.data.createdAt).getTime() - new Date(a.data.createdAt).getTime();
-        case "oldest":
-          return new Date(a.data.createdAt).getTime() - new Date(b.data.createdAt).getTime();
-        default:
-          return 0;
-      }
-    });
-
-    return items;
-  }, [folder, sort]);
+  const items: GridItem[] = [
+    ...children.map((f) => ({ kind: "folder" as const, data: f })),
+    ...files.map((f) => ({ kind: "file" as const, data: f })),
+  ];
 
   function handleContextMenu(e: React.MouseEvent, type: "folder" | "file", id: string, name: string) {
     e.preventDefault();
@@ -101,16 +166,15 @@ export default function FolderPage() {
         ]
     : [];
 
-  if (!folder) {
+  if (!folderMeta) {
     return <p className="text-zinc-500">Loading...</p>;
   }
 
-  const totalPages = Math.ceil(sortedItems.length / PAGE_SIZE);
+  const totalPages = Math.ceil(total / PAGE_SIZE);
   const safePage = Math.min(page, Math.max(0, totalPages - 1));
-  const pagedItems = sortedItems.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
   const viewProps = {
-    items: pagedItems,
+    items,
     dragging: dragDrop.dragging,
     dropTargetId: dragDrop.dropTargetId,
     onDragStart: dragDrop.handleDragStart,
@@ -133,22 +197,22 @@ export default function FolderPage() {
       onDragLeave={dragDrop.handlePageDragLeave}
       onDrop={dragDrop.handlePageDrop}
     >
-      {dragDrop.externalDragOver && <DropOverlay label={`Drop files to upload to ${folder.name}`} />}
+      {dragDrop.externalDragOver && <DropOverlay label={`Drop files to upload to ${folderMeta.name}`} />}
 
       <div className="flex items-center gap-2 mb-2 text-sm text-zinc-500 flex-wrap">
         <Link href="/files" className="hover:underline">Files</Link>
-        {folder.breadcrumbs?.map((b) => (
+        {folderMeta.breadcrumbs?.map((b) => (
           <span key={b.id} className="flex items-center gap-2">
             <span>/</span>
             <Link href={`/files/${b.id}`} className="hover:underline">{b.name}</Link>
           </span>
         ))}
         <span>/</span>
-        <span className="text-foreground font-medium">{folder.name}</span>
+        <span className="text-foreground font-medium">{folderMeta.name}</span>
       </div>
 
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">{folder.name}</h1>
+        <h1 className="text-2xl font-bold">{folderMeta.name}</h1>
         <div className="flex gap-2 items-center">
           <ViewToggle value={view} onChange={setView} />
           <SortSelect value={sort} onChange={(v) => { setSort(v); setPage(0); }} />
@@ -173,14 +237,14 @@ export default function FolderPage() {
         </div>
       </div>
 
-      {sortedItems.length === 0 && (
+      {total === 0 && items.length === 0 && (
         <p className="text-zinc-500 text-sm">This folder is empty.</p>
       )}
 
-      {pagedItems.length > 0 && (
+      {items.length > 0 && (
         <>
           {view === "grid" ? <FileBrowserGrid {...viewProps} /> : <FileBrowserList {...viewProps} />}
-          <Pagination page={safePage} totalPages={totalPages} onPageChange={setPage} totalItems={sortedItems.length} pageSize={PAGE_SIZE} />
+          <Pagination page={safePage} totalPages={totalPages} onPageChange={setPage} totalItems={total} pageSize={PAGE_SIZE} />
         </>
       )}
 
@@ -215,7 +279,7 @@ export default function FolderPage() {
         open={showUpload}
         onClose={() => setShowUpload(false)}
         folderId={folderId}
-        onUploaded={loadData}
+        onUploaded={reloadAll}
       />
     </div>
   );

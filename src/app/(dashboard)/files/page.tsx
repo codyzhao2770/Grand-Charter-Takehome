@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useRefresh } from "@/components/layout/RefreshContext";
 import ContextMenu, { type ContextMenuItem } from "@/components/ui/ContextMenu";
@@ -19,25 +19,82 @@ import type { FileItem, FolderItem, GridItem, CtxMenu } from "@/lib/types";
 
 const PAGE_SIZE = 12;
 
+function getSortQuery(sort: SortOption): string {
+  switch (sort) {
+    case "name-asc":  return "sortBy=name&sortOrder=asc";
+    case "name-desc": return "sortBy=name&sortOrder=desc";
+    case "recent":    return "sortBy=createdAt&sortOrder=desc";
+    case "oldest":    return "sortBy=createdAt&sortOrder=asc";
+    default:          return "sortBy=name&sortOrder=asc";
+  }
+}
+
 export default function FilesPage() {
   const router = useRouter();
   const { refreshKey } = useRefresh();
-  const [files, setFiles] = useState<FileItem[]>([]);
   const [folders, setFolders] = useState<FolderItem[]>([]);
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const [total, setTotal] = useState(0);
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<SortOption>("name-asc");
   const [view, setView] = useState<ViewMode>("grid");
   const [showUpload, setShowUpload] = useState(false);
 
-  const loadData = useCallback(() => {
-    fetch("/api/folders")
-      .then((r) => r.json())
-      .then((d) => setFolders(d.data || []));
-    fetch("/api/files")
-      .then((r) => r.json())
-      .then((d) => setFiles(d.data || []));
-  }, []);
+  const totalsRef = useRef({ folders: 0, files: 0 });
+
+  const loadData = useCallback(async () => {
+    const offset = page * PAGE_SIZE;
+    const sq = getSortQuery(sort);
+    const ft = totalsRef.current.folders;
+
+    let fOffset = 0, fLimit = 0;
+    let fiOffset = 0, fiLimit = 0;
+
+    if (page === 0) {
+      fLimit = PAGE_SIZE;
+      fiLimit = PAGE_SIZE;
+    } else if (offset < ft) {
+      fOffset = offset;
+      fLimit = Math.min(PAGE_SIZE, ft - offset);
+      fiOffset = 0;
+      fiLimit = PAGE_SIZE - fLimit;
+    } else {
+      fiOffset = offset - ft;
+      fiLimit = PAGE_SIZE;
+    }
+
+    const [fRes, fiRes] = await Promise.all([
+      fLimit > 0
+        ? fetch(`/api/folders?limit=${fLimit}&offset=${fOffset}&${sq}`).then(r => r.json())
+        : null,
+      fiLimit > 0
+        ? fetch(`/api/files?limit=${fiLimit}&offset=${fiOffset}&${sq}`).then(r => r.json())
+        : null,
+    ]);
+
+    const newFolders: FolderItem[] = fRes?.data ?? [];
+    const newFiles: FileItem[] = fiRes?.data ?? [];
+    const newFT = fRes?.pagination?.total ?? totalsRef.current.folders;
+    const newFiT = fiRes?.pagination?.total ?? totalsRef.current.files;
+    totalsRef.current = { folders: newFT, files: newFiT };
+
+    if (page === 0) {
+      const foldersToShow = newFolders.slice(0, PAGE_SIZE);
+      const remaining = PAGE_SIZE - foldersToShow.length;
+      setFolders(foldersToShow);
+      setFiles(remaining > 0 ? newFiles.slice(0, remaining) : []);
+    } else {
+      setFolders(newFolders);
+      setFiles(newFiles);
+    }
+    setTotal(newFT + newFiT);
+  }, [page, sort]);
+
+  useEffect(() => {
+    totalsRef.current = { folders: 0, files: 0 };
+    setPage(0);
+  }, [refreshKey]);
 
   useEffect(() => {
     loadData();
@@ -46,30 +103,10 @@ export default function FilesPage() {
   const actions = useItemActions(loadData);
   const dragDrop = useFileDragDrop(loadData);
 
-  const sortedItems = useMemo(() => {
-    const items: GridItem[] = [
-      ...folders.map((f) => ({ kind: "folder" as const, data: f })),
-      ...files.map((f) => ({ kind: "file" as const, data: f })),
-    ];
-
-    items.sort((a, b) => {
-      if (a.kind !== b.kind) return a.kind === "folder" ? -1 : 1;
-      switch (sort) {
-        case "name-asc":
-          return a.data.name.localeCompare(b.data.name);
-        case "name-desc":
-          return b.data.name.localeCompare(a.data.name);
-        case "recent":
-          return new Date(b.data.createdAt).getTime() - new Date(a.data.createdAt).getTime();
-        case "oldest":
-          return new Date(a.data.createdAt).getTime() - new Date(b.data.createdAt).getTime();
-        default:
-          return 0;
-      }
-    });
-
-    return items;
-  }, [folders, files, sort]);
+  const items: GridItem[] = [
+    ...folders.map((f) => ({ kind: "folder" as const, data: f })),
+    ...files.map((f) => ({ kind: "file" as const, data: f })),
+  ];
 
   function handleContextMenu(e: React.MouseEvent, type: "folder" | "file", id: string, name: string) {
     e.preventDefault();
@@ -92,12 +129,11 @@ export default function FilesPage() {
         ]
     : [];
 
-  const totalPages = Math.ceil(sortedItems.length / PAGE_SIZE);
+  const totalPages = Math.ceil(total / PAGE_SIZE);
   const safePage = Math.min(page, Math.max(0, totalPages - 1));
-  const pagedItems = sortedItems.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
   const viewProps = {
-    items: pagedItems,
+    items,
     dragging: dragDrop.dragging,
     dropTargetId: dragDrop.dropTargetId,
     onDragStart: dragDrop.handleDragStart,
@@ -142,14 +178,14 @@ export default function FilesPage() {
         </div>
       </div>
 
-      {sortedItems.length === 0 && (
+      {total === 0 && items.length === 0 && (
         <p className="text-zinc-500 text-sm">No files or folders yet. Upload a file or create a folder to get started.</p>
       )}
 
-      {pagedItems.length > 0 && (
+      {items.length > 0 && (
         <>
           {view === "grid" ? <FileBrowserGrid {...viewProps} /> : <FileBrowserList {...viewProps} />}
-          <Pagination page={safePage} totalPages={totalPages} onPageChange={setPage} totalItems={sortedItems.length} pageSize={PAGE_SIZE} />
+          <Pagination page={safePage} totalPages={totalPages} onPageChange={setPage} totalItems={total} pageSize={PAGE_SIZE} />
         </>
       )}
 

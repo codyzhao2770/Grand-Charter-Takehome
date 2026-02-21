@@ -1,30 +1,43 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
-import { successResponse, errorResponse } from "@/lib/api-response";
+import { paginatedResponse, errorResponse, parsePaginationParams } from "@/lib/api-response";
 import { DEFAULT_USER_ID } from "@/lib/constants";
 import { encrypt } from "@/lib/encryption";
 import { testConnection } from "@/lib/schema-extractor";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const connections = await prisma.dbConnection.findMany({
-      where: { userId: DEFAULT_USER_ID },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        name: true,
-        host: true,
-        port: true,
-        databaseName: true,
-        username: true,
-        folderId: true,
-        lastExtractedAt: true,
-        createdAt: true,
-        // Exclude encryptedPassword and cached data from list
-      },
-    });
+    const { searchParams } = new URL(request.url);
+    const { limit, offset, sortBy, sortOrder } = parsePaginationParams(
+      searchParams,
+      { sortBy: "createdAt" }
+    );
 
-    return successResponse(connections);
+    const orderByField = sortBy === "name" ? "name" : "createdAt";
+    const where = { userId: DEFAULT_USER_ID };
+
+    const [connections, total] = await Promise.all([
+      prisma.dbConnection.findMany({
+        where,
+        orderBy: { [orderByField]: sortOrder },
+        take: limit,
+        skip: offset,
+        select: {
+          id: true,
+          name: true,
+          host: true,
+          port: true,
+          databaseName: true,
+          username: true,
+          folderId: true,
+          lastExtractedAt: true,
+          createdAt: true,
+        },
+      }),
+      prisma.dbConnection.count({ where }),
+    ]);
+
+    return paginatedResponse(connections, total, limit, offset);
   } catch (error) {
     console.error("GET /api/db-connections error:", error);
     return errorResponse("INTERNAL_ERROR", "Failed to list connections", 500);
