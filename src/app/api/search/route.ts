@@ -7,6 +7,14 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const q = searchParams.get("q");
+    const limit = Math.min(
+      Math.max(parseInt(searchParams.get("limit") || "50", 10) || 50, 1),
+      100
+    );
+    const offset = Math.max(
+      parseInt(searchParams.get("offset") || "0", 10) || 0,
+      0
+    );
 
     if (!q || q.trim().length === 0) {
       return errorResponse("VALIDATION_ERROR", "Search query is required", 400);
@@ -14,7 +22,6 @@ export async function GET(request: NextRequest) {
 
     const searchTerm = `%${q.trim()}%`;
 
-    // Search files and folders by name using ILIKE (case-insensitive)
     const [files, folders] = await Promise.all([
       prisma.file.findMany({
         where: {
@@ -22,7 +29,8 @@ export async function GET(request: NextRequest) {
           name: { contains: q.trim(), mode: "insensitive" },
         },
         orderBy: { name: "asc" },
-        take: 50,
+        take: limit,
+        skip: offset,
       }),
       prisma.folder.findMany({
         where: {
@@ -30,18 +38,18 @@ export async function GET(request: NextRequest) {
           name: { contains: q.trim(), mode: "insensitive" },
         },
         orderBy: { name: "asc" },
-        take: 50,
+        take: limit,
+        skip: offset,
       }),
     ]);
 
-    // Also search db_connections cached_schema
     const dbConnections = await prisma.$queryRaw<
       { id: string; name: string }[]
     >`
       SELECT id, name FROM db_connections
       WHERE user_id = ${DEFAULT_USER_ID}::uuid
         AND cached_schema::text ILIKE ${searchTerm}
-      LIMIT 20
+      LIMIT ${limit} OFFSET ${offset}
     `;
 
     return successResponse({

@@ -1,30 +1,38 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
-import { successResponse, errorResponse } from "@/lib/api-response";
+import { paginatedResponse, successResponse, errorResponse, parsePaginationParams } from "@/lib/api-response";
 import { DEFAULT_USER_ID, MAX_FILE_SIZE } from "@/lib/constants";
-import { saveFile } from "@/lib/storage";
+import { saveFileStream } from "@/lib/storage";
 import { randomUUID } from "crypto";
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const folderId = searchParams.get("folderId");
+    const { limit, offset, sortBy, sortOrder } = parsePaginationParams(searchParams);
 
-    const files = await prisma.file.findMany({
-      where: {
-        userId: DEFAULT_USER_ID,
-        folderId: folderId || null,
-      },
-      orderBy: { name: "asc" },
-    });
+    const orderByField = sortBy === "createdAt" ? "createdAt" : "name";
+    const where = {
+      userId: DEFAULT_USER_ID,
+      folderId: folderId || null,
+    };
 
-    // Convert BigInt size to number for JSON serialization
+    const [files, total] = await Promise.all([
+      prisma.file.findMany({
+        where,
+        orderBy: { [orderByField]: sortOrder },
+        take: limit,
+        skip: offset,
+      }),
+      prisma.file.count({ where }),
+    ]);
+
     const serialized = files.map((f) => ({
       ...f,
       size: Number(f.size),
     }));
 
-    return successResponse(serialized);
+    return paginatedResponse(serialized, total, limit, offset);
   } catch (error) {
     console.error("GET /api/files error:", error);
     return errorResponse("INTERNAL_ERROR", "Failed to list files", 500);
@@ -59,8 +67,12 @@ export async function POST(request: NextRequest) {
     }
 
     const fileId = randomUUID();
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const storagePath = await saveFile(DEFAULT_USER_ID, fileId, file.name, buffer);
+    const storagePath = await saveFileStream(
+      DEFAULT_USER_ID,
+      fileId,
+      file.name,
+      file.stream()
+    );
 
     const dbFile = await prisma.file.create({
       data: {
