@@ -13,6 +13,7 @@ import UploadDialog from "@/components/ui/UploadDialog";
 import { useConfirmDialog, usePromptDialog } from "@/components/ui/useDialog";
 import Pagination from "@/components/ui/Pagination";
 import SortSelect, { type SortOption } from "@/components/ui/SortSelect";
+import ViewToggle, { type ViewMode } from "@/components/ui/ViewToggle";
 
 interface FileItem {
   id: string;
@@ -83,6 +84,7 @@ export default function FolderPage() {
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<SortOption>("name-asc");
+  const [view, setView] = useState<ViewMode>("grid");
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [externalDragOver, setExternalDragOver] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -335,6 +337,148 @@ export default function FolderPage() {
   const safePage = Math.min(page, Math.max(0, totalPages - 1));
   const pagedItems = sortedItems.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
+  function renderGridView() {
+    return (
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        {pagedItems.map((item) => {
+          if (item.kind === "folder") {
+            const c = item.data;
+            return (
+              <div
+                key={`folder-${c.id}`}
+                draggable
+                onDragStart={(e) => handleDragStart(e, "folder", c.id, c.name)}
+                onDragEnd={handleDragEnd}
+                onDragOver={(e) => handleFolderDragOver(e, c.id)}
+                onDragLeave={handleFolderDragLeave}
+                onDrop={(e) => handleFolderDrop(e, c.id)}
+                onContextMenu={(e) => handleContextMenu(e, "folder", c.id, c.name)}
+                className={`border rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group transition-colors flex flex-col items-center justify-center text-center aspect-square ${
+                  dropTargetId === c.id
+                    ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
+                    : dragging?.id === c.id
+                    ? "opacity-50 border-zinc-200 dark:border-zinc-800"
+                    : "border-zinc-200 dark:border-zinc-800"
+                }`}
+              >
+                <FolderIcon className="w-10 h-10 mb-3 text-blue-500" />
+                <Link href={`/files/${c.id}`} className="block font-medium truncate w-full px-1">
+                  {c.name}
+                </Link>
+                <div className="mt-auto pt-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <a href={`/api/folders/${c.id}/download`} className="text-xs text-blue-600">Download</a>
+                  <button onClick={() => handleRenameSubfolder(c.id, c.name)} className="text-xs text-blue-600 cursor-pointer">
+                    Rename
+                  </button>
+                  <button onClick={() => handleDeleteFolder(c.id)} className="text-xs text-red-600 cursor-pointer">
+                    Delete
+                  </button>
+                </div>
+              </div>
+            );
+          } else {
+            const f = item.data;
+            return (
+              <div
+                key={`file-${f.id}`}
+                draggable
+                onDragStart={(e) => handleDragStart(e, "file", f.id, f.name)}
+                onDragEnd={handleDragEnd}
+                onContextMenu={(e) => handleContextMenu(e, "file", f.id, f.name)}
+                className={`border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group flex flex-col items-center justify-center text-center aspect-square ${
+                  dragging?.id === f.id && dragging?.type === "file" ? "opacity-50" : ""
+                }`}
+              >
+                <FileIcon className="w-10 h-10 mb-3 text-zinc-400" />
+                <p className="font-medium truncate w-full px-1">{f.name}</p>
+                <p className="text-xs text-zinc-500 mt-1">
+                  {f.mimeType} &middot; {formatSize(f.size)}
+                </p>
+                <div className="mt-auto pt-2 flex gap-2 flex-wrap justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <a href={`/api/files/${f.id}`} className="text-xs text-blue-600">Download</a>
+                  <a href={`/api/files/${f.id}/preview`} target="_blank" className="text-xs text-blue-600">Preview</a>
+                  <button onClick={() => handleRenameFile(f.id, f.name)} className="text-xs text-blue-600 cursor-pointer">Rename</button>
+                  <button onClick={() => handleDeleteFile(f.id)} className="text-xs text-red-600 cursor-pointer">Delete</button>
+                </div>
+              </div>
+            );
+          }
+        })}
+      </div>
+    );
+  }
+
+  function renderListView() {
+    return (
+      <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg divide-y divide-zinc-200 dark:divide-zinc-800">
+        {pagedItems.map((item) => {
+          if (item.kind === "folder") {
+            const c = item.data;
+            return (
+              <div
+                key={`folder-${c.id}`}
+                draggable
+                onDragStart={(e) => handleDragStart(e, "folder", c.id, c.name)}
+                onDragEnd={handleDragEnd}
+                onDragOver={(e) => handleFolderDragOver(e, c.id)}
+                onDragLeave={handleFolderDragLeave}
+                onDrop={(e) => handleFolderDrop(e, c.id)}
+                onContextMenu={(e) => handleContextMenu(e, "folder", c.id, c.name)}
+                className={`flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-900 group transition-colors ${
+                  dropTargetId === c.id
+                    ? "bg-blue-50 dark:bg-blue-950/30"
+                    : dragging?.id === c.id
+                    ? "opacity-50"
+                    : ""
+                }`}
+              >
+                <FolderIcon className="w-5 h-5 text-blue-500 shrink-0" />
+                <Link href={`/files/${c.id}`} className="font-medium truncate flex-1">
+                  {c.name}
+                </Link>
+                <div className="flex gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <a href={`/api/folders/${c.id}/download`} className="text-xs text-blue-600">Download</a>
+                  <button onClick={() => handleRenameSubfolder(c.id, c.name)} className="text-xs text-blue-600 cursor-pointer">
+                    Rename
+                  </button>
+                  <button onClick={() => handleDeleteFolder(c.id)} className="text-xs text-red-600 cursor-pointer">
+                    Delete
+                  </button>
+                </div>
+              </div>
+            );
+          } else {
+            const f = item.data;
+            return (
+              <div
+                key={`file-${f.id}`}
+                draggable
+                onDragStart={(e) => handleDragStart(e, "file", f.id, f.name)}
+                onDragEnd={handleDragEnd}
+                onContextMenu={(e) => handleContextMenu(e, "file", f.id, f.name)}
+                className={`flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-900 group ${
+                  dragging?.id === f.id && dragging?.type === "file" ? "opacity-50" : ""
+                }`}
+              >
+                <FileIcon className="w-5 h-5 text-zinc-400 shrink-0" />
+                <p className="font-medium truncate flex-1">{f.name}</p>
+                <span className="text-xs text-zinc-500 shrink-0 hidden sm:block">
+                  {formatSize(f.size)}
+                </span>
+                <div className="flex gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <a href={`/api/files/${f.id}`} className="text-xs text-blue-600">Download</a>
+                  <a href={`/api/files/${f.id}/preview`} target="_blank" className="text-xs text-blue-600">Preview</a>
+                  <button onClick={() => handleRenameFile(f.id, f.name)} className="text-xs text-blue-600 cursor-pointer">Rename</button>
+                  <button onClick={() => handleDeleteFile(f.id)} className="text-xs text-red-600 cursor-pointer">Delete</button>
+                </div>
+              </div>
+            );
+          }
+        })}
+      </div>
+    );
+  }
+
   return (
     <div
       className="relative"
@@ -368,7 +512,8 @@ export default function FolderPage() {
 
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">{folder.name}</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <ViewToggle value={view} onChange={setView} />
           <SortSelect value={sort} onChange={(v) => { setSort(v); setPage(0); }} />
           <button
             onClick={handleCreateSubfolder}
@@ -397,72 +542,7 @@ export default function FolderPage() {
 
       {pagedItems.length > 0 && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {pagedItems.map((item) => {
-              if (item.kind === "folder") {
-                const c = item.data;
-                return (
-                  <div
-                    key={`folder-${c.id}`}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, "folder", c.id, c.name)}
-                    onDragEnd={handleDragEnd}
-                    onDragOver={(e) => handleFolderDragOver(e, c.id)}
-                    onDragLeave={handleFolderDragLeave}
-                    onDrop={(e) => handleFolderDrop(e, c.id)}
-                    onContextMenu={(e) => handleContextMenu(e, "folder", c.id, c.name)}
-                    className={`border rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group transition-colors flex flex-col items-center justify-center text-center aspect-square ${
-                      dropTargetId === c.id
-                        ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
-                        : dragging?.id === c.id
-                        ? "opacity-50 border-zinc-200 dark:border-zinc-800"
-                        : "border-zinc-200 dark:border-zinc-800"
-                    }`}
-                  >
-                    <FolderIcon className="w-10 h-10 mb-3 text-blue-500" />
-                    <Link href={`/files/${c.id}`} className="block font-medium truncate w-full px-1">
-                      {c.name}
-                    </Link>
-                    <div className="mt-auto pt-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <a href={`/api/folders/${c.id}/download`} className="text-xs text-blue-600">Download</a>
-                      <button onClick={() => handleRenameSubfolder(c.id, c.name)} className="text-xs text-blue-600 cursor-pointer">
-                        Rename
-                      </button>
-                      <button onClick={() => handleDeleteFolder(c.id)} className="text-xs text-red-600 cursor-pointer">
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                );
-              } else {
-                const f = item.data;
-                return (
-                  <div
-                    key={`file-${f.id}`}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, "file", f.id, f.name)}
-                    onDragEnd={handleDragEnd}
-                    onContextMenu={(e) => handleContextMenu(e, "file", f.id, f.name)}
-                    className={`border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group flex flex-col items-center justify-center text-center aspect-square ${
-                      dragging?.id === f.id && dragging?.type === "file" ? "opacity-50" : ""
-                    }`}
-                  >
-                    <FileIcon className="w-10 h-10 mb-3 text-zinc-400" />
-                    <p className="font-medium truncate w-full px-1">{f.name}</p>
-                    <p className="text-xs text-zinc-500 mt-1">
-                      {f.mimeType} &middot; {formatSize(f.size)}
-                    </p>
-                    <div className="mt-auto pt-2 flex gap-2 flex-wrap justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <a href={`/api/files/${f.id}`} className="text-xs text-blue-600">Download</a>
-                      <a href={`/api/files/${f.id}/preview`} target="_blank" className="text-xs text-blue-600">Preview</a>
-                      <button onClick={() => handleRenameFile(f.id, f.name)} className="text-xs text-blue-600 cursor-pointer">Rename</button>
-                      <button onClick={() => handleDeleteFile(f.id)} className="text-xs text-red-600 cursor-pointer">Delete</button>
-                    </div>
-                  </div>
-                );
-              }
-            })}
-          </div>
+          {view === "grid" ? renderGridView() : renderListView()}
           <Pagination page={safePage} totalPages={totalPages} onPageChange={setPage} totalItems={sortedItems.length} pageSize={PAGE_SIZE} />
         </>
       )}

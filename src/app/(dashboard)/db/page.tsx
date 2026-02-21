@@ -11,6 +11,7 @@ import AddConnectionDialog from "@/components/ui/AddConnectionDialog";
 import { useConfirmDialog } from "@/components/ui/useDialog";
 import Pagination from "@/components/ui/Pagination";
 import SortSelect, { type SortOption } from "@/components/ui/SortSelect";
+import ViewToggle, { type ViewMode } from "@/components/ui/ViewToggle";
 
 interface DbConnection {
   id: string;
@@ -33,6 +34,7 @@ export default function AllConnectionsPage() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<SortOption>("name-asc");
+  const [view, setView] = useState<ViewMode>("grid");
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; id: string; name: string } | null>(null);
 
   const confirmDialog = useConfirmDialog();
@@ -107,11 +109,90 @@ export default function AllConnectionsPage() {
       ]
     : [];
 
+  function DbIcon({ className }: { className?: string }) {
+    return (
+      <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125v-3.75m16.5 3.75v3.75c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125v-3.75" />
+      </svg>
+    );
+  }
+
+  function renderGridView() {
+    return (
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        {paged.map((c) => (
+          <div
+            key={c.id}
+            onContextMenu={(e) => handleContextMenu(e, c.id, c.name)}
+            className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group flex flex-col items-center justify-center text-center aspect-square"
+          >
+            <DbIcon className="w-10 h-10 mb-3 text-emerald-500" />
+            <Link href={`/db/${c.id}`} className="block font-medium truncate w-full px-1">
+              {c.name}
+            </Link>
+            <p className="text-xs text-zinc-500 mt-1">
+              {c.host}:{c.port}/{c.databaseName}
+            </p>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              {c.lastExtractedAt
+                ? `Extracted: ${new Date(c.lastExtractedAt).toLocaleDateString()}`
+                : "Not yet extracted"}
+            </p>
+            <div className="mt-auto pt-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => handleRefresh(c.id)} className="text-xs text-blue-600 cursor-pointer">
+                Refresh Schema
+              </button>
+              <button onClick={() => handleDelete(c.id)} className="text-xs text-red-600 cursor-pointer">
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  function renderListView() {
+    return (
+      <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg divide-y divide-zinc-200 dark:divide-zinc-800">
+        {paged.map((c) => (
+          <div
+            key={c.id}
+            onContextMenu={(e) => handleContextMenu(e, c.id, c.name)}
+            className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-900 group"
+          >
+            <DbIcon className="w-5 h-5 text-emerald-500 shrink-0" />
+            <Link href={`/db/${c.id}`} className="font-medium truncate flex-1">
+              {c.name}
+            </Link>
+            <span className="text-xs text-zinc-500 shrink-0 hidden sm:block">
+              {c.host}:{c.port}/{c.databaseName}
+            </span>
+            <span className="text-xs text-zinc-500 shrink-0 hidden md:block">
+              {c.lastExtractedAt
+                ? `Extracted: ${new Date(c.lastExtractedAt).toLocaleDateString()}`
+                : "Not yet extracted"}
+            </span>
+            <div className="flex gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => handleRefresh(c.id)} className="text-xs text-blue-600 cursor-pointer">
+                Refresh Schema
+              </button>
+              <button onClick={() => handleDelete(c.id)} className="text-xs text-red-600 cursor-pointer">
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">DB Connections</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <ViewToggle value={view} onChange={setView} />
           <SortSelect value={sort} onChange={(v) => { setSort(v); setPage(0); }} />
           <button
             onClick={() => setShowAddDialog(true)}
@@ -127,38 +208,9 @@ export default function AllConnectionsPage() {
       )}
 
       {paged.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {paged.map((c) => (
-            <div
-              key={c.id}
-              onContextMenu={(e) => handleContextMenu(e, c.id, c.name)}
-              className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group flex flex-col items-center justify-center text-center aspect-square"
-            >
-              <svg className="w-10 h-10 mb-3 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125v-3.75m16.5 3.75v3.75c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125v-3.75" />
-              </svg>
-              <Link href={`/db/${c.id}`} className="block font-medium truncate w-full px-1">
-                {c.name}
-              </Link>
-              <p className="text-xs text-zinc-500 mt-1">
-                {c.host}:{c.port}/{c.databaseName}
-              </p>
-              <p className="text-xs text-zinc-500 mt-0.5">
-                {c.lastExtractedAt
-                  ? `Extracted: ${new Date(c.lastExtractedAt).toLocaleDateString()}`
-                  : "Not yet extracted"}
-              </p>
-              <div className="mt-auto pt-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => handleRefresh(c.id)} className="text-xs text-blue-600 cursor-pointer">
-                  Refresh Schema
-                </button>
-                <button onClick={() => handleDelete(c.id)} className="text-xs text-red-600 cursor-pointer">
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+        <>
+          {view === "grid" ? renderGridView() : renderListView()}
+        </>
       )}
 
       <Pagination
