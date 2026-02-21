@@ -212,7 +212,18 @@ export default function FolderPage() {
       </div>
 
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">{folderMeta.name}</h1>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => router.push(folderMeta.parentId ? `/files/${folderMeta.parentId}` : "/files")}
+            className="p-1.5 rounded-md hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
+            aria-label="Go back"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+            </svg>
+          </button>
+          <h1 className="text-2xl font-bold">{folderMeta.name}</h1>
+        </div>
         <div className="flex gap-2 items-center">
           <ViewToggle value={view} onChange={setView} />
           <SortSelect value={sort} onChange={(v) => { setSort(v); setPage(0); }} />
