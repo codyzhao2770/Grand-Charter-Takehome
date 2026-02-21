@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import SchemaSearch from "./SchemaSearch";
-import Pagination from "./Pagination";
+import Pagination from "@/components/ui/Pagination";
 import usePaginatedFilter from "./usePaginatedFilter";
 
 interface EnumType {
@@ -68,7 +68,7 @@ export default function EnumsTab({ enums }: { enums: EnumType[] }) {
         ))}
       </div>
       {paged.length === 0 && <p className="text-zinc-500 text-sm mt-2">No enums match your search.</p>}
-      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} totalItems={totalItems} pageSize={pageSize} />
+      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} totalItems={totalItems} pageSize={pageSize} className="mt-3" />
     </div>
   );
 }

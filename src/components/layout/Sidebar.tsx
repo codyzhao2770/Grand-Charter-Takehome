@@ -11,6 +11,7 @@ import PromptDialog from "@/components/ui/PromptDialog";
 import AddConnectionDialog from "@/components/ui/AddConnectionDialog";
 import { useConfirmDialog, usePromptDialog } from "@/components/ui/useDialog";
 import { useToast } from "./ToastContext";
+import { moveItem } from "@/lib/move-item";
 
 interface FolderNode {
   id: string;
@@ -289,28 +290,11 @@ export default function Sidebar() {
     const item = JSON.parse(raw) as { type: string; id: string; name: string };
     if (item.id === targetFolderId) return;
 
-    if (item.type === "file") {
-      const res = await fetch(`/api/files/${item.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folderId: targetFolderId }),
-      });
-      if (res.ok) {
-        toast.showToast(`Moved "${item.name}"${targetFolderId ? " to folder" : " to root"}`, "success");
-      } else {
-        toast.showToast("Failed to move file", "success");
-      }
-    } else if (item.type === "folder") {
-      const res = await fetch(`/api/folders/${item.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ parentId: targetFolderId }),
-      });
-      if (res.ok) {
-        toast.showToast(`Moved "${item.name}"${targetFolderId ? " to folder" : " to root"}`, "success");
-      } else {
-        toast.showToast("Failed to move folder", "success");
-      }
+    const result = await moveItem(item.type, item.id, targetFolderId);
+    if (result.ok) {
+      toast.showToast(`Moved "${item.name}"${targetFolderId ? " to folder" : " to root"}`, "success");
+    } else {
+      toast.showToast(`Failed to move ${item.type}`, "success");
     }
     setDragging(null);
     triggerRefresh();

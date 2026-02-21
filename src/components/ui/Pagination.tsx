@@ -6,19 +6,21 @@ export default function Pagination({
   onPageChange,
   totalItems,
   pageSize,
+  className,
 }: {
   page: number;
   totalPages: number;
   onPageChange: (p: number) => void;
   totalItems: number;
   pageSize: number;
+  className?: string;
 }) {
   if (totalPages <= 1) return null;
   const start = page * pageSize + 1;
   const end = Math.min((page + 1) * pageSize, totalItems);
 
   return (
-    <div className="flex items-center justify-between mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
+    <div className={`flex items-center justify-between pt-3 border-t border-zinc-200 dark:border-zinc-800 ${className || "mt-4"}`}>
       <span className="text-xs text-zinc-500">
         {start}&ndash;{end} of {totalItems}
       </span>
