@@ -77,7 +77,7 @@ export default function ConnectionPage() {
     if (res.ok) {
       toast.updateToast(toastId, "Schema refreshed successfully", "success");
     } else {
-      toast.updateToast(toastId, "Schema refresh failed", "success");
+      toast.updateToast(toastId, "Schema refresh failed", "error");
     }
   }
 

@@ -235,7 +235,7 @@ export default function Sidebar() {
     if (res.ok) {
       toast.updateToast(toastId, "Schema refreshed successfully", "success");
     } else {
-      toast.updateToast(toastId, "Schema refresh failed", "success");
+      toast.updateToast(toastId, "Schema refresh failed", "error");
     }
   }
 
@@ -294,7 +294,7 @@ export default function Sidebar() {
     if (result.ok) {
       toast.showToast(`Moved "${item.name}"${targetFolderId ? " to folder" : " to root"}`, "success");
     } else {
-      toast.showToast(`Failed to move ${item.type}`, "success");
+      toast.showToast(`Failed to move ${item.type}`, "error");
     }
     setDragging(null);
     triggerRefresh();
