@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FolderIcon, FileIcon } from "@/components/icons";
 import { formatSize } from "@/lib/format";
 import type { GridItem, FolderItem } from "@/lib/types";
@@ -41,6 +41,8 @@ export default function FileBrowserList({
   onRenameFile,
   onDeleteFile,
 }: FileBrowserListProps) {
+  const router = useRouter();
+
   return (
     <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg divide-y divide-zinc-200 dark:divide-zinc-800">
       {items.map((item) => {
@@ -50,13 +52,14 @@ export default function FileBrowserList({
             <div
               key={`folder-${f.id}`}
               draggable
+              onClick={() => router.push(`/files/${f.id}`)}
               onDragStart={(e) => onDragStart(e, "folder", f.id, f.name)}
               onDragEnd={onDragEnd}
               onDragOver={(e) => onFolderDragOver(e, f.id)}
               onDragLeave={onFolderDragLeave}
               onDrop={(e) => onFolderDrop(e, f.id)}
               onContextMenu={(e) => onContextMenu(e, "folder", f.id, f.name)}
-              className={`flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-900 group transition-colors ${
+              className={`flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-900 group transition-colors cursor-pointer ${
                 dropTargetId === f.id
                   ? "bg-blue-50 dark:bg-blue-950/30"
                   : dragging?.id === f.id
@@ -65,15 +68,15 @@ export default function FileBrowserList({
               }`}
             >
               <FolderIcon className="w-5 h-5 text-blue-500 shrink-0" />
-              <Link href={`/files/${f.id}`} className="font-medium truncate flex-1">
+              <span className="font-medium truncate flex-1">
                 {f.name}
-              </Link>
+              </span>
               {isFolderItem(f) && (
                 <span className="text-xs text-zinc-500 shrink-0 hidden sm:block">
                   {f._count.children} folders, {f._count.files} files
                 </span>
               )}
-              <div className="flex gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="flex gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
                 <a href={`/api/folders/${f.id}/download`} className="text-xs text-blue-600">Download</a>
                 <button onClick={() => onRenameFolder(f.id, f.name)} className="text-xs text-blue-600 cursor-pointer">Rename</button>
                 <button onClick={() => onDeleteFolder(f.id)} className="text-xs text-red-600 cursor-pointer">Delete</button>
@@ -86,10 +89,11 @@ export default function FileBrowserList({
             <div
               key={`file-${f.id}`}
               draggable
+              onClick={() => window.open(`/api/files/${f.id}/preview`, "_blank")}
               onDragStart={(e) => onDragStart(e, "file", f.id, f.name)}
               onDragEnd={onDragEnd}
               onContextMenu={(e) => onContextMenu(e, "file", f.id, f.name)}
-              className={`flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-900 group ${
+              className={`flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-900 group cursor-pointer ${
                 dragging?.id === f.id && dragging?.type === "file" ? "opacity-50" : ""
               }`}
             >
@@ -98,9 +102,8 @@ export default function FileBrowserList({
               <span className="text-xs text-zinc-500 shrink-0 hidden sm:block">
                 {formatSize(f.size)}
               </span>
-              <div className="flex gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="flex gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
                 <a href={`/api/files/${f.id}`} className="text-xs text-blue-600">Download</a>
-                <a href={`/api/files/${f.id}/preview`} target="_blank" className="text-xs text-blue-600">Preview</a>
                 <button onClick={() => onRenameFile(f.id, f.name)} className="text-xs text-blue-600 cursor-pointer">Rename</button>
                 <button onClick={() => onDeleteFile(f.id)} className="text-xs text-red-600 cursor-pointer">Delete</button>
               </div>
