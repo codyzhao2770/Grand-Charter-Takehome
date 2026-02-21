@@ -31,7 +31,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return errorResponse("NOT_FOUND", "File not found", 404);
     }
 
-    if (!SUPPORTED_TYPES.has(file.mimeType)) {
+    if (!file.mimeType || !SUPPORTED_TYPES.has(file.mimeType)) {
       return errorResponse(
         "UNSUPPORTED",
         "Thumbnail not available for this file type",

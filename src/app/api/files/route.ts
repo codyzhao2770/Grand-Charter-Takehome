@@ -77,7 +77,7 @@ async function parseMultipartUpload(
       "file",
       (
         name: string,
-        stream: NodeJS.ReadableStream,
+        stream: any,
         info: { filename: string; mimeType: string }
       ) => {
         if (name !== "file" || fileReceived) {
@@ -106,7 +106,7 @@ async function parseMultipartUpload(
           if (sizeError) return;
         });
         ws.on("error", (err) => reject(err));
-        stream.on("error", (err) => {
+        stream.on("error", (err: any) => {
           if (!sizeError) reject(err);
         });
       }
