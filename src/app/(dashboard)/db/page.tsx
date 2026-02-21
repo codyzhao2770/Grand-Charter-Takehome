@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRefresh } from "@/components/layout/RefreshContext";
@@ -10,6 +10,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import AddConnectionDialog from "@/components/ui/AddConnectionDialog";
 import { useConfirmDialog } from "@/components/ui/useDialog";
 import Pagination from "@/components/ui/Pagination";
+import SortSelect, { type SortOption } from "@/components/ui/SortSelect";
 
 interface DbConnection {
   id: string;
@@ -31,6 +32,7 @@ export default function AllConnectionsPage() {
   const [connections, setConnections] = useState<DbConnection[]>([]);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [page, setPage] = useState(0);
+  const [sort, setSort] = useState<SortOption>("name-asc");
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; id: string; name: string } | null>(null);
 
   const confirmDialog = useConfirmDialog();
@@ -44,6 +46,25 @@ export default function AllConnectionsPage() {
   useEffect(() => {
     loadData();
   }, [loadData, refreshKey]);
+
+  const sortedConnections = useMemo(() => {
+    const sorted = [...connections];
+    sorted.sort((a, b) => {
+      switch (sort) {
+        case "name-asc":
+          return a.name.localeCompare(b.name);
+        case "name-desc":
+          return b.name.localeCompare(a.name);
+        case "recent":
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        case "oldest":
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        default:
+          return 0;
+      }
+    });
+    return sorted;
+  }, [connections, sort]);
 
   async function handleDelete(id: string) {
     const ok = await confirmDialog.confirm({
@@ -74,9 +95,9 @@ export default function AllConnectionsPage() {
     setCtxMenu({ x: e.clientX, y: e.clientY, id, name });
   }
 
-  const totalPages = Math.ceil(connections.length / PAGE_SIZE);
+  const totalPages = Math.ceil(sortedConnections.length / PAGE_SIZE);
   const safePage = Math.min(page, Math.max(0, totalPages - 1));
-  const paged = connections.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+  const paged = sortedConnections.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
   const ctxItems: ContextMenuItem[] = ctxMenu
     ? [
@@ -90,12 +111,15 @@ export default function AllConnectionsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">DB Connections</h1>
-        <button
-          onClick={() => setShowAddDialog(true)}
-          className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-        >
-          Add Connection
-        </button>
+        <div className="flex gap-2">
+          <SortSelect value={sort} onChange={(v) => { setSort(v); setPage(0); }} />
+          <button
+            onClick={() => setShowAddDialog(true)}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Add Connection
+          </button>
+        </div>
       </div>
 
       {connections.length === 0 && (
@@ -103,14 +127,17 @@ export default function AllConnectionsPage() {
       )}
 
       {paged.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {paged.map((c) => (
             <div
               key={c.id}
               onContextMenu={(e) => handleContextMenu(e, c.id, c.name)}
-              className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group"
+              className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group flex flex-col items-center justify-center text-center aspect-square"
             >
-              <Link href={`/db/${c.id}`} className="block font-medium truncate">
+              <svg className="w-10 h-10 mb-3 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125v-3.75m16.5 3.75v3.75c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125v-3.75" />
+              </svg>
+              <Link href={`/db/${c.id}`} className="block font-medium truncate w-full px-1">
                 {c.name}
               </Link>
               <p className="text-xs text-zinc-500 mt-1">
@@ -121,7 +148,7 @@ export default function AllConnectionsPage() {
                   ? `Extracted: ${new Date(c.lastExtractedAt).toLocaleDateString()}`
                   : "Not yet extracted"}
               </p>
-              <div className="mt-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="mt-auto pt-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button onClick={() => handleRefresh(c.id)} className="text-xs text-blue-600 cursor-pointer">
                   Refresh Schema
                 </button>
@@ -138,7 +165,7 @@ export default function AllConnectionsPage() {
         page={safePage}
         totalPages={totalPages}
         onPageChange={setPage}
-        totalItems={connections.length}
+        totalItems={sortedConnections.length}
         pageSize={PAGE_SIZE}
       />
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRefresh } from "@/components/layout/RefreshContext";
@@ -12,6 +12,7 @@ import PromptDialog from "@/components/ui/PromptDialog";
 import UploadDialog from "@/components/ui/UploadDialog";
 import { useConfirmDialog, usePromptDialog } from "@/components/ui/useDialog";
 import Pagination from "@/components/ui/Pagination";
+import SortSelect, { type SortOption } from "@/components/ui/SortSelect";
 
 interface FileItem {
   id: string;
@@ -26,8 +27,13 @@ interface FolderItem {
   id: string;
   name: string;
   parentId: string | null;
+  createdAt: string;
   _count: { children: number; files: number };
 }
+
+type GridItem =
+  | { kind: "folder"; data: FolderItem }
+  | { kind: "file"; data: FileItem };
 
 function formatSize(bytes: number) {
   if (bytes === 0) return "0 B";
@@ -45,6 +51,22 @@ interface CtxMenu {
   name: string;
 }
 
+function FolderIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+    </svg>
+  );
+}
+
+function FileIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+    </svg>
+  );
+}
+
 export default function FilesPage() {
   const router = useRouter();
   const { refreshKey, triggerRefresh } = useRefresh();
@@ -53,8 +75,8 @@ export default function FilesPage() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
-  const [folderPage, setFolderPage] = useState(0);
-  const [filePage, setFilePage] = useState(0);
+  const [page, setPage] = useState(0);
+  const [sort, setSort] = useState<SortOption>("name-asc");
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [externalDragOver, setExternalDragOver] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -75,6 +97,33 @@ export default function FilesPage() {
   useEffect(() => {
     loadData();
   }, [loadData, refreshKey]);
+
+  const sortedItems = useMemo(() => {
+    const items: GridItem[] = [
+      ...folders.map((f) => ({ kind: "folder" as const, data: f })),
+      ...files.map((f) => ({ kind: "file" as const, data: f })),
+    ];
+
+    items.sort((a, b) => {
+      // Folders always before files
+      if (a.kind !== b.kind) return a.kind === "folder" ? -1 : 1;
+
+      switch (sort) {
+        case "name-asc":
+          return a.data.name.localeCompare(b.data.name);
+        case "name-desc":
+          return b.data.name.localeCompare(a.data.name);
+        case "recent":
+          return new Date(b.data.createdAt).getTime() - new Date(a.data.createdAt).getTime();
+        case "oldest":
+          return new Date(a.data.createdAt).getTime() - new Date(b.data.createdAt).getTime();
+        default:
+          return 0;
+      }
+    });
+
+    return items;
+  }, [folders, files, sort]);
 
   async function handleCreateFolder() {
     const name = await promptDialog.prompt({
@@ -163,7 +212,6 @@ export default function FilesPage() {
   }
 
   function handleFolderDragOver(e: React.DragEvent, folderId: string) {
-    // Only allow internal item drops on folders
     if (e.dataTransfer.types.includes("application/x-datavault")) {
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
@@ -257,6 +305,7 @@ export default function FilesPage() {
     ? ctxMenu.type === "folder"
       ? [
           { label: "Open", onClick: () => router.push(`/files/${ctxMenu.id}`) },
+          { label: "Download", onClick: () => { window.location.href = `/api/folders/${ctxMenu.id}/download`; } },
           { label: "Rename", onClick: () => handleRenameFolder(ctxMenu.id, ctxMenu.name) },
           { label: "Delete", onClick: () => handleDeleteFolder(ctxMenu.id), variant: "danger" },
         ]
@@ -268,16 +317,10 @@ export default function FilesPage() {
         ]
     : [];
 
-  const FOLDER_PAGE_SIZE = 12;
-  const FILE_PAGE_SIZE = 12;
-
-  const folderTotalPages = Math.ceil(folders.length / FOLDER_PAGE_SIZE);
-  const safeFolderPage = Math.min(folderPage, Math.max(0, folderTotalPages - 1));
-  const pagedFolders = folders.slice(safeFolderPage * FOLDER_PAGE_SIZE, (safeFolderPage + 1) * FOLDER_PAGE_SIZE);
-
-  const fileTotalPages = Math.ceil(files.length / FILE_PAGE_SIZE);
-  const safeFilePage = Math.min(filePage, Math.max(0, fileTotalPages - 1));
-  const pagedFiles = files.slice(safeFilePage * FILE_PAGE_SIZE, (safeFilePage + 1) * FILE_PAGE_SIZE);
+  const PAGE_SIZE = 12;
+  const totalPages = Math.ceil(sortedItems.length / PAGE_SIZE);
+  const safePage = Math.min(page, Math.max(0, totalPages - 1));
+  const pagedItems = sortedItems.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
   return (
     <div
@@ -301,6 +344,7 @@ export default function FilesPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Files</h1>
         <div className="flex gap-2">
+          <SortSelect value={sort} onChange={(v) => { setSort(v); setPage(0); }} />
           <button
             onClick={handleCreateFolder}
             className="px-4 py-2 text-sm bg-zinc-200 dark:bg-zinc-800 rounded hover:bg-zinc-300 dark:hover:bg-zinc-700"
@@ -316,79 +360,79 @@ export default function FilesPage() {
         </div>
       </div>
 
-      {folders.length === 0 && files.length === 0 && (
+      {sortedItems.length === 0 && (
         <p className="text-zinc-500 text-sm">No files or folders yet. Upload a file or create a folder to get started.</p>
       )}
 
-      {folders.length > 0 && (
-        <div className="mb-6">
-          <h2 className="text-sm font-semibold text-zinc-500 mb-2 uppercase tracking-wider">Folders ({folders.length})</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {pagedFolders.map((f) => (
-              <div
-                key={f.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, "folder", f.id, f.name)}
-                onDragEnd={handleDragEnd}
-                onDragOver={(e) => handleFolderDragOver(e, f.id)}
-                onDragLeave={handleFolderDragLeave}
-                onDrop={(e) => handleFolderDrop(e, f.id)}
-                onContextMenu={(e) => handleContextMenu(e, "folder", f.id, f.name)}
-                className={`border rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group transition-colors ${
-                  dropTargetId === f.id
-                    ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
-                    : dragging?.id === f.id
-                    ? "opacity-50 border-zinc-200 dark:border-zinc-800"
-                    : "border-zinc-200 dark:border-zinc-800"
-                }`}
-              >
-                <Link href={`/files/${f.id}`} className="block font-medium truncate">
-                  {f.name}
-                </Link>
-                <p className="text-xs text-zinc-500 mt-1">
-                  {f._count.children} folders, {f._count.files} files
-                </p>
-                <div className="mt-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => handleRenameFolder(f.id, f.name)} className="text-xs text-blue-600 cursor-pointer">Rename</button>
-                  <button onClick={() => handleDeleteFolder(f.id)} className="text-xs text-red-600 cursor-pointer">Delete</button>
-                </div>
-              </div>
-            ))}
+      {pagedItems.length > 0 && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {pagedItems.map((item) => {
+              if (item.kind === "folder") {
+                const f = item.data;
+                return (
+                  <div
+                    key={`folder-${f.id}`}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, "folder", f.id, f.name)}
+                    onDragEnd={handleDragEnd}
+                    onDragOver={(e) => handleFolderDragOver(e, f.id)}
+                    onDragLeave={handleFolderDragLeave}
+                    onDrop={(e) => handleFolderDrop(e, f.id)}
+                    onContextMenu={(e) => handleContextMenu(e, "folder", f.id, f.name)}
+                    className={`border rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group transition-colors flex flex-col items-center justify-center text-center aspect-square ${
+                      dropTargetId === f.id
+                        ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
+                        : dragging?.id === f.id
+                        ? "opacity-50 border-zinc-200 dark:border-zinc-800"
+                        : "border-zinc-200 dark:border-zinc-800"
+                    }`}
+                  >
+                    <FolderIcon className="w-10 h-10 mb-3 text-blue-500" />
+                    <Link href={`/files/${f.id}`} className="block font-medium truncate w-full px-1">
+                      {f.name}
+                    </Link>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      {f._count.children} folders, {f._count.files} files
+                    </p>
+                    <div className="mt-auto pt-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <a href={`/api/folders/${f.id}/download`} className="text-xs text-blue-600">Download</a>
+                      <button onClick={() => handleRenameFolder(f.id, f.name)} className="text-xs text-blue-600 cursor-pointer">Rename</button>
+                      <button onClick={() => handleDeleteFolder(f.id)} className="text-xs text-red-600 cursor-pointer">Delete</button>
+                    </div>
+                  </div>
+                );
+              } else {
+                const f = item.data;
+                return (
+                  <div
+                    key={`file-${f.id}`}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, "file", f.id, f.name)}
+                    onDragEnd={handleDragEnd}
+                    onContextMenu={(e) => handleContextMenu(e, "file", f.id, f.name)}
+                    className={`border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group flex flex-col items-center justify-center text-center aspect-square ${
+                      dragging?.id === f.id && dragging?.type === "file" ? "opacity-50" : ""
+                    }`}
+                  >
+                    <FileIcon className="w-10 h-10 mb-3 text-zinc-400" />
+                    <p className="font-medium truncate w-full px-1">{f.name}</p>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      {f.mimeType} &middot; {formatSize(f.size)}
+                    </p>
+                    <div className="mt-auto pt-2 flex gap-2 flex-wrap justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <a href={`/api/files/${f.id}`} className="text-xs text-blue-600">Download</a>
+                      <a href={`/api/files/${f.id}/preview`} target="_blank" className="text-xs text-blue-600">Preview</a>
+                      <button onClick={() => handleRenameFile(f.id, f.name)} className="text-xs text-blue-600 cursor-pointer">Rename</button>
+                      <button onClick={() => handleDeleteFile(f.id)} className="text-xs text-red-600 cursor-pointer">Delete</button>
+                    </div>
+                  </div>
+                );
+              }
+            })}
           </div>
-          <Pagination page={safeFolderPage} totalPages={folderTotalPages} onPageChange={setFolderPage} totalItems={folders.length} pageSize={FOLDER_PAGE_SIZE} />
-        </div>
-      )}
-
-      {files.length > 0 && (
-        <div>
-          <h2 className="text-sm font-semibold text-zinc-500 mb-2 uppercase tracking-wider">Files ({files.length})</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {pagedFiles.map((f) => (
-              <div
-                key={f.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, "file", f.id, f.name)}
-                onDragEnd={handleDragEnd}
-                onContextMenu={(e) => handleContextMenu(e, "file", f.id, f.name)}
-                className={`border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group ${
-                  dragging?.id === f.id && dragging?.type === "file" ? "opacity-50" : ""
-                }`}
-              >
-                <p className="font-medium truncate">{f.name}</p>
-                <p className="text-xs text-zinc-500 mt-1">
-                  {f.mimeType} &middot; {formatSize(f.size)}
-                </p>
-                <div className="mt-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <a href={`/api/files/${f.id}`} className="text-xs text-blue-600">Download</a>
-                  <a href={`/api/files/${f.id}/preview`} target="_blank" className="text-xs text-blue-600">Preview</a>
-                  <button onClick={() => handleRenameFile(f.id, f.name)} className="text-xs text-blue-600 cursor-pointer">Rename</button>
-                  <button onClick={() => handleDeleteFile(f.id)} className="text-xs text-red-600 cursor-pointer">Delete</button>
-                </div>
-              </div>
-            ))}
-          </div>
-          <Pagination page={safeFilePage} totalPages={fileTotalPages} onPageChange={setFilePage} totalItems={files.length} pageSize={FILE_PAGE_SIZE} />
-        </div>
+          <Pagination page={safePage} totalPages={totalPages} onPageChange={setPage} totalItems={sortedItems.length} pageSize={PAGE_SIZE} />
+        </>
       )}
 
       {ctxMenu && (

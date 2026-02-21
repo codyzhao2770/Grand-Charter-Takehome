@@ -320,6 +320,7 @@ export default function Sidebar() {
     ? ctxMenu.type === "folder"
       ? [
           { label: "New Folder", onClick: () => handleCreateFolder(ctxMenu.id) },
+          { label: "Download", onClick: () => { window.location.href = `/api/folders/${ctxMenu.id}/download`; } },
           { label: "Rename", onClick: () => handleRenameFolder(ctxMenu.id, ctxMenu.name) },
           { label: "Delete", onClick: () => handleDeleteFolder(ctxMenu.id), variant: "danger" },
         ]
