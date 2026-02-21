@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRefresh } from "@/components/layout/RefreshContext";
+import { useToast } from "@/components/layout/ToastContext";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useConfirmDialog } from "@/components/ui/useDialog";
 import TablesTab from "@/components/schema/TablesTab";
@@ -51,10 +52,10 @@ export default function ConnectionPage() {
   const { connectionId } = useParams<{ connectionId: string }>();
   const router = useRouter();
   const { triggerRefresh } = useRefresh();
+  const toast = useToast();
   const [conn, setConn] = useState<ConnectionDetail | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [tab, setTab] = useState<TabKey>("tables");
-  const [toast, setToast] = useState<string | null>(null);
   const confirmDialog = useConfirmDialog();
 
   const loadData = useCallback(() => {
@@ -69,12 +70,14 @@ export default function ConnectionPage() {
 
   async function handleExtract() {
     setExtracting(true);
+    const toastId = toast.showToast("Refreshing schema...", "loading");
     const res = await fetch(`/api/db-connections/${connectionId}/extract`, { method: "POST" });
     setExtracting(false);
     loadData();
     if (res.ok) {
-      setToast("Schema refreshed successfully");
-      setTimeout(() => setToast(null), 3000);
+      toast.updateToast(toastId, "Schema refreshed successfully", "success");
+    } else {
+      toast.updateToast(toastId, "Schema refresh failed", "success");
     }
   }
 
@@ -200,12 +203,6 @@ export default function ConnectionPage() {
         onConfirm={confirmDialog.onConfirm}
         onCancel={confirmDialog.onCancel}
       />
-
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm">
-          {toast}
-        </div>
-      )}
     </div>
   );
 }

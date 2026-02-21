@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRefresh } from "@/components/layout/RefreshContext";
+import { useToast } from "@/components/layout/ToastContext";
+import { useDrag } from "@/components/layout/DragContext";
 import ContextMenu, { type ContextMenuItem } from "@/components/ui/ContextMenu";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import PromptDialog from "@/components/ui/PromptDialog";
+import UploadDialog from "@/components/ui/UploadDialog";
 import { useConfirmDialog, usePromptDialog } from "@/components/ui/useDialog";
 import Pagination from "@/components/ui/Pagination";
 
@@ -44,13 +47,18 @@ interface CtxMenu {
 
 export default function FilesPage() {
   const router = useRouter();
-  const { triggerRefresh } = useRefresh();
+  const { refreshKey, triggerRefresh } = useRefresh();
+  const toast = useToast();
+  const { dragging, setDragging } = useDrag();
   const [files, setFiles] = useState<FileItem[]>([]);
   const [folders, setFolders] = useState<FolderItem[]>([]);
-  const [uploading, setUploading] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [folderPage, setFolderPage] = useState(0);
   const [filePage, setFilePage] = useState(0);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [externalDragOver, setExternalDragOver] = useState(false);
+  const [showUpload, setShowUpload] = useState(false);
+  const dragCounterRef = useRef(0);
 
   const confirmDialog = useConfirmDialog();
   const promptDialog = usePromptDialog();
@@ -66,20 +74,7 @@ export default function FilesPage() {
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
-
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    await fetch("/api/files", { method: "POST", body: formData });
-    setUploading(false);
-    loadData();
-    triggerRefresh();
-    e.target.value = "";
-  }
+  }, [loadData, refreshKey]);
 
   async function handleCreateFolder() {
     const name = await promptDialog.prompt({
@@ -155,6 +150,109 @@ export default function FilesPage() {
     setCtxMenu({ x: e.clientX, y: e.clientY, type, id, name });
   }
 
+  // --- Drag handlers for internal items ---
+  function handleDragStart(e: React.DragEvent, type: "file" | "folder", id: string, name: string) {
+    e.dataTransfer.setData("application/x-datavault", JSON.stringify({ type, id, name }));
+    e.dataTransfer.effectAllowed = "move";
+    setDragging({ type, id, name });
+  }
+
+  function handleDragEnd() {
+    setDragging(null);
+    setDropTargetId(null);
+  }
+
+  function handleFolderDragOver(e: React.DragEvent, folderId: string) {
+    // Only allow internal item drops on folders
+    if (e.dataTransfer.types.includes("application/x-datavault")) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setDropTargetId(folderId);
+    }
+  }
+
+  function handleFolderDragLeave() {
+    setDropTargetId(null);
+  }
+
+  async function handleFolderDrop(e: React.DragEvent, targetFolderId: string) {
+    e.preventDefault();
+    setDropTargetId(null);
+    const raw = e.dataTransfer.getData("application/x-datavault");
+    if (!raw) return;
+    const item = JSON.parse(raw) as { type: string; id: string; name: string };
+    if (item.id === targetFolderId) return;
+
+    if (item.type === "file") {
+      const res = await fetch(`/api/files/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folderId: targetFolderId }),
+      });
+      if (res.ok) {
+        toast.showToast(`Moved "${item.name}" to folder`, "success");
+      } else {
+        toast.showToast("Failed to move file", "success");
+      }
+    } else if (item.type === "folder") {
+      const res = await fetch(`/api/folders/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parentId: targetFolderId }),
+      });
+      if (res.ok) {
+        toast.showToast(`Moved "${item.name}" to folder`, "success");
+      } else {
+        toast.showToast("Failed to move folder", "success");
+      }
+    }
+    setDragging(null);
+    loadData();
+    triggerRefresh();
+  }
+
+  // --- Page-level external file drop ---
+  function handlePageDragOver(e: React.DragEvent) {
+    if (e.dataTransfer.types.includes("Files")) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    }
+  }
+
+  function handlePageDragEnter(e: React.DragEvent) {
+    if (e.dataTransfer.types.includes("Files")) {
+      e.preventDefault();
+      dragCounterRef.current++;
+      setExternalDragOver(true);
+    }
+  }
+
+  function handlePageDragLeave(e: React.DragEvent) {
+    if (e.dataTransfer.types.includes("Files")) {
+      e.preventDefault();
+      dragCounterRef.current--;
+      if (dragCounterRef.current === 0) {
+        setExternalDragOver(false);
+      }
+    }
+  }
+
+  async function handlePageDrop(e: React.DragEvent) {
+    e.preventDefault();
+    dragCounterRef.current = 0;
+    setExternalDragOver(false);
+    if (!e.dataTransfer.files.length) return;
+    const toastId = toast.showToast(`Uploading ${e.dataTransfer.files.length} file(s)...`, "loading");
+    for (const file of Array.from(e.dataTransfer.files)) {
+      const formData = new FormData();
+      formData.append("file", file);
+      await fetch("/api/files", { method: "POST", body: formData });
+    }
+    toast.updateToast(toastId, "Files uploaded successfully", "success");
+    loadData();
+    triggerRefresh();
+  }
+
   const ctxItems: ContextMenuItem[] = ctxMenu
     ? ctxMenu.type === "folder"
       ? [
@@ -182,7 +280,24 @@ export default function FilesPage() {
   const pagedFiles = files.slice(safeFilePage * FILE_PAGE_SIZE, (safeFilePage + 1) * FILE_PAGE_SIZE);
 
   return (
-    <div>
+    <div
+      className="relative"
+      onDragOver={handlePageDragOver}
+      onDragEnter={handlePageDragEnter}
+      onDragLeave={handlePageDragLeave}
+      onDrop={handlePageDrop}
+    >
+      {externalDragOver && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-blue-50/80 dark:bg-blue-950/50 border-2 border-dashed border-blue-500 rounded-lg pointer-events-none">
+          <div className="text-center">
+            <svg className="w-12 h-12 mx-auto mb-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 16V4m0 0l-4 4m4-4l4 4M4 20h16" />
+            </svg>
+            <p className="text-lg font-medium text-blue-600 dark:text-blue-400">Drop files to upload</p>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Files</h1>
         <div className="flex gap-2">
@@ -192,10 +307,12 @@ export default function FilesPage() {
           >
             New Folder
           </button>
-          <label className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer">
-            {uploading ? "Uploading..." : "Upload File"}
-            <input type="file" className="hidden" onChange={handleUpload} disabled={uploading} />
-          </label>
+          <button
+            onClick={() => setShowUpload(true)}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer"
+          >
+            Upload File
+          </button>
         </div>
       </div>
 
@@ -210,8 +327,20 @@ export default function FilesPage() {
             {pagedFolders.map((f) => (
               <div
                 key={f.id}
+                draggable
+                onDragStart={(e) => handleDragStart(e, "folder", f.id, f.name)}
+                onDragEnd={handleDragEnd}
+                onDragOver={(e) => handleFolderDragOver(e, f.id)}
+                onDragLeave={handleFolderDragLeave}
+                onDrop={(e) => handleFolderDrop(e, f.id)}
                 onContextMenu={(e) => handleContextMenu(e, "folder", f.id, f.name)}
-                className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group"
+                className={`border rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group transition-colors ${
+                  dropTargetId === f.id
+                    ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
+                    : dragging?.id === f.id
+                    ? "opacity-50 border-zinc-200 dark:border-zinc-800"
+                    : "border-zinc-200 dark:border-zinc-800"
+                }`}
               >
                 <Link href={`/files/${f.id}`} className="block font-medium truncate">
                   {f.name}
@@ -220,8 +349,8 @@ export default function FilesPage() {
                   {f._count.children} folders, {f._count.files} files
                 </p>
                 <div className="mt-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => handleRenameFolder(f.id, f.name)} className="text-xs text-blue-600">Rename</button>
-                  <button onClick={() => handleDeleteFolder(f.id)} className="text-xs text-red-600">Delete</button>
+                  <button onClick={() => handleRenameFolder(f.id, f.name)} className="text-xs text-blue-600 cursor-pointer">Rename</button>
+                  <button onClick={() => handleDeleteFolder(f.id)} className="text-xs text-red-600 cursor-pointer">Delete</button>
                 </div>
               </div>
             ))}
@@ -237,8 +366,13 @@ export default function FilesPage() {
             {pagedFiles.map((f) => (
               <div
                 key={f.id}
+                draggable
+                onDragStart={(e) => handleDragStart(e, "file", f.id, f.name)}
+                onDragEnd={handleDragEnd}
                 onContextMenu={(e) => handleContextMenu(e, "file", f.id, f.name)}
-                className="border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group"
+                className={`border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900 group ${
+                  dragging?.id === f.id && dragging?.type === "file" ? "opacity-50" : ""
+                }`}
               >
                 <p className="font-medium truncate">{f.name}</p>
                 <p className="text-xs text-zinc-500 mt-1">
@@ -247,8 +381,8 @@ export default function FilesPage() {
                 <div className="mt-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <a href={`/api/files/${f.id}`} className="text-xs text-blue-600">Download</a>
                   <a href={`/api/files/${f.id}/preview`} target="_blank" className="text-xs text-blue-600">Preview</a>
-                  <button onClick={() => handleRenameFile(f.id, f.name)} className="text-xs text-blue-600">Rename</button>
-                  <button onClick={() => handleDeleteFile(f.id)} className="text-xs text-red-600">Delete</button>
+                  <button onClick={() => handleRenameFile(f.id, f.name)} className="text-xs text-blue-600 cursor-pointer">Rename</button>
+                  <button onClick={() => handleDeleteFile(f.id)} className="text-xs text-red-600 cursor-pointer">Delete</button>
                 </div>
               </div>
             ))}
@@ -283,6 +417,14 @@ export default function FilesPage() {
         confirmLabel={promptDialog.state.confirmLabel}
         onConfirm={promptDialog.onConfirm}
         onCancel={promptDialog.onCancel}
+      />
+      <UploadDialog
+        open={showUpload}
+        onClose={() => setShowUpload(false)}
+        onUploaded={() => {
+          loadData();
+          triggerRefresh();
+        }}
       />
     </div>
   );

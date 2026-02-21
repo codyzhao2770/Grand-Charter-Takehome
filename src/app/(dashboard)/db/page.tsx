@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRefresh } from "@/components/layout/RefreshContext";
+import { useToast } from "@/components/layout/ToastContext";
 import ContextMenu, { type ContextMenuItem } from "@/components/ui/ContextMenu";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import AddConnectionDialog from "@/components/ui/AddConnectionDialog";
@@ -26,11 +27,11 @@ const PAGE_SIZE = 12;
 export default function AllConnectionsPage() {
   const router = useRouter();
   const { refreshKey, triggerRefresh } = useRefresh();
+  const toast = useToast();
   const [connections, setConnections] = useState<DbConnection[]>([]);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [page, setPage] = useState(0);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; id: string; name: string } | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
 
   const confirmDialog = useConfirmDialog();
 
@@ -58,11 +59,13 @@ export default function AllConnectionsPage() {
   }
 
   async function handleRefresh(id: string) {
+    const toastId = toast.showToast("Refreshing schema...", "loading");
     const res = await fetch(`/api/db-connections/${id}/extract`, { method: "POST" });
     loadData();
     if (res.ok) {
-      setToast("Schema refreshed successfully");
-      setTimeout(() => setToast(null), 3000);
+      toast.updateToast(toastId, "Schema refreshed successfully", "success");
+    } else {
+      toast.updateToast(toastId, "Schema refresh failed", "success");
     }
   }
 
@@ -167,12 +170,6 @@ export default function AllConnectionsPage() {
           router.push(`/db/${id}`);
         }}
       />
-
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm animate-in fade-in">
-          {toast}
-        </div>
-      )}
     </div>
   );
 }

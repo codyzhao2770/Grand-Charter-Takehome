@@ -4,11 +4,13 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useRefresh } from "./RefreshContext";
+import { useDrag } from "./DragContext";
 import ContextMenu, { type ContextMenuItem } from "@/components/ui/ContextMenu";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import PromptDialog from "@/components/ui/PromptDialog";
 import AddConnectionDialog from "@/components/ui/AddConnectionDialog";
 import { useConfirmDialog, usePromptDialog } from "@/components/ui/useDialog";
+import { useToast } from "./ToastContext";
 
 interface FolderNode {
   id: string;
@@ -70,6 +72,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { refreshKey, triggerRefresh } = useRefresh();
+  const { dragging, setDragging } = useDrag();
   const [folders, setFolders] = useState<FolderNode[]>([]);
   const [connections, setConnections] = useState<DbConnection[]>([]);
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
@@ -78,11 +81,14 @@ export default function Sidebar() {
   const [searchResults, setSearchResults] = useState<SearchResults | null>(null);
   const [searching, setSearching] = useState(false);
   const [showAddConnection, setShowAddConnection] = useState(false);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
+  const autoExpandTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const confirmDialog = useConfirmDialog();
   const promptDialog = usePromptDialog();
+  const toast = useToast();
 
   const tree = useMemo(() => buildTree(folders), [folders]);
 
@@ -222,7 +228,91 @@ export default function Sidebar() {
   }
 
   async function handleRefreshConnection(id: string) {
-    await fetch(`/api/db-connections/${id}/extract`, { method: "POST" });
+    const toastId = toast.showToast("Refreshing schema...", "loading");
+    const res = await fetch(`/api/db-connections/${id}/extract`, { method: "POST" });
+    triggerRefresh();
+    if (res.ok) {
+      toast.updateToast(toastId, "Schema refreshed successfully", "success");
+    } else {
+      toast.updateToast(toastId, "Schema refresh failed", "success");
+    }
+  }
+
+  // --- Sidebar drop handlers ---
+  function handleSidebarDragOver(e: React.DragEvent, targetId: string | null) {
+    if (e.dataTransfer.types.includes("application/x-datavault")) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "move";
+      setDropTargetId(targetId);
+    }
+  }
+
+  function handleSidebarDragEnter(e: React.DragEvent, targetId: string | null) {
+    if (e.dataTransfer.types.includes("application/x-datavault")) {
+      e.preventDefault();
+      e.stopPropagation();
+      setDropTargetId(targetId);
+      if (targetId && collapsed.has(targetId)) {
+        if (autoExpandTimer.current) clearTimeout(autoExpandTimer.current);
+        autoExpandTimer.current = setTimeout(() => {
+          setCollapsed((prev) => {
+            const next = new Set(prev);
+            next.delete(targetId);
+            return next;
+          });
+        }, 800);
+      }
+    }
+  }
+
+  function handleSidebarDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDropTargetId(null);
+    if (autoExpandTimer.current) {
+      clearTimeout(autoExpandTimer.current);
+      autoExpandTimer.current = null;
+    }
+  }
+
+  async function handleSidebarDrop(e: React.DragEvent, targetFolderId: string | null) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDropTargetId(null);
+    if (autoExpandTimer.current) {
+      clearTimeout(autoExpandTimer.current);
+      autoExpandTimer.current = null;
+    }
+    const raw = e.dataTransfer.getData("application/x-datavault");
+    if (!raw) return;
+    const item = JSON.parse(raw) as { type: string; id: string; name: string };
+    if (item.id === targetFolderId) return;
+
+    if (item.type === "file") {
+      const res = await fetch(`/api/files/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folderId: targetFolderId }),
+      });
+      if (res.ok) {
+        toast.showToast(`Moved "${item.name}"${targetFolderId ? " to folder" : " to root"}`, "success");
+      } else {
+        toast.showToast("Failed to move file", "success");
+      }
+    } else if (item.type === "folder") {
+      const res = await fetch(`/api/folders/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parentId: targetFolderId }),
+      });
+      if (res.ok) {
+        toast.showToast(`Moved "${item.name}"${targetFolderId ? " to folder" : " to root"}`, "success");
+      } else {
+        toast.showToast("Failed to move folder", "success");
+      }
+    }
+    setDragging(null);
     triggerRefresh();
   }
 
@@ -243,10 +333,19 @@ export default function Sidebar() {
     const hasChildren = node.children.length > 0;
     const isCollapsed = collapsed.has(node.id);
     const indent = (node.depth + 1) * 16 + 12;
+    const isDropTarget = dropTargetId === node.id;
 
     return (
       <div key={node.id}>
-        <div className="flex items-center">
+        <div
+          className={`flex items-center transition-colors rounded ${
+            isDropTarget ? "bg-blue-100 dark:bg-blue-900/30" : ""
+          }`}
+          onDragOver={(e) => handleSidebarDragOver(e, node.id)}
+          onDragEnter={(e) => handleSidebarDragEnter(e, node.id)}
+          onDragLeave={handleSidebarDragLeave}
+          onDrop={(e) => handleSidebarDrop(e, node.id)}
+        >
           {hasChildren ? (
             <button
               onClick={() => toggleCollapse(node.id)}
@@ -361,8 +460,14 @@ export default function Sidebar() {
       <nav className="flex-1 p-3 space-y-0.5">
         <Link
           href="/files"
-          className={`block px-3 py-2 rounded text-sm ${
-            pathname === "/files"
+          onDragOver={(e) => handleSidebarDragOver(e, null)}
+          onDragEnter={(e) => handleSidebarDragEnter(e, null)}
+          onDragLeave={handleSidebarDragLeave}
+          onDrop={(e) => handleSidebarDrop(e, null)}
+          className={`block px-3 py-2 rounded text-sm transition-colors ${
+            dropTargetId === null && dragging
+              ? "bg-blue-100 dark:bg-blue-900/30"
+              : pathname === "/files"
               ? "bg-zinc-200 dark:bg-zinc-800 font-medium"
               : "hover:bg-zinc-100 dark:hover:bg-zinc-900"
           }`}
