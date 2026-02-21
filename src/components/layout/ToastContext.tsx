@@ -2,16 +2,18 @@
 
 import { createContext, useContext, useState, useCallback, useRef } from "react";
 
+type ToastVariant = "success" | "loading" | "error";
+
 interface Toast {
   id: number;
   message: string;
-  variant: "success" | "loading";
+  variant: ToastVariant;
 }
 
 interface ToastContextValue {
-  showToast: (message: string, variant?: "success" | "loading", duration?: number) => number;
+  showToast: (message: string, variant?: ToastVariant, duration?: number) => number;
   dismissToast: (id: number) => void;
-  updateToast: (id: number, message: string, variant?: "success" | "loading", duration?: number) => void;
+  updateToast: (id: number, message: string, variant?: ToastVariant, duration?: number) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -31,7 +33,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const showToast = useCallback(
-    (message: string, variant: "success" | "loading" = "success", duration = 3000) => {
+    (message: string, variant: ToastVariant = "success", duration = 3000) => {
       const id = nextId.current++;
       setToasts((prev) => [...prev, { id, message, variant }]);
       if (variant !== "loading") {
@@ -43,7 +45,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 
   const updateToast = useCallback(
-    (id: number, message: string, variant: "success" | "loading" = "success", duration = 3000) => {
+    (id: number, message: string, variant: ToastVariant = "success", duration = 3000) => {
       setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, message, variant } : t)));
       if (variant !== "loading") {
         setTimeout(() => dismissToast(id), duration);
@@ -60,13 +62,24 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           <div
             key={t.id}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg shadow-lg text-sm text-white ${
-              t.variant === "loading" ? "bg-zinc-700" : "bg-green-600"
+              t.variant === "loading"
+                ? "bg-zinc-700"
+                : t.variant === "error"
+                  ? "bg-red-600"
+                  : "bg-green-600"
             }`}
           >
             {t.variant === "loading" && (
               <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            )}
+            {t.variant === "error" && (
+              <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="15" y1="9" x2="9" y2="15" />
+                <line x1="9" y1="9" x2="15" y2="15" />
               </svg>
             )}
             {t.message}

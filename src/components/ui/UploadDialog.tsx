@@ -2,20 +2,13 @@
 
 import { useState, useRef, useCallback } from "react";
 import Modal from "./Modal";
+import { formatSize } from "@/lib/format";
 
 interface UploadDialogProps {
   open: boolean;
   onClose: () => void;
   folderId?: string;
   onUploaded: () => void;
-}
-
-function formatSize(bytes: number) {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
 export default function UploadDialog({ open, onClose, folderId, onUploaded }: UploadDialogProps) {

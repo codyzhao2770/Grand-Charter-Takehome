@@ -8,6 +8,7 @@ export function createMockPrisma() {
     user: {
       findFirst: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
@@ -16,6 +17,7 @@ export function createMockPrisma() {
     folder: {
       findFirst: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
@@ -23,6 +25,7 @@ export function createMockPrisma() {
     file: {
       findFirst: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
@@ -30,6 +33,7 @@ export function createMockPrisma() {
     dbConnection: {
       findFirst: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
