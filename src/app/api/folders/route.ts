@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
-import { paginatedResponse, errorResponse, parsePaginationParams } from "@/lib/api-response";
+import { paginatedResponse, successResponse, errorResponse, parsePaginationParams } from "@/lib/api-response";
 import { DEFAULT_USER_ID } from "@/lib/constants";
 
 export async function GET(request: NextRequest) {
