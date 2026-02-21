@@ -49,7 +49,7 @@ export function useFileDragDrop(loadData: () => void, folderId?: string) {
     if (result.ok) {
       toast.showToast(`Moved "${item.name}" to folder`, "success");
     } else {
-      toast.showToast(`Failed to move ${item.type}`, "success");
+      toast.showToast(`Failed to move ${item.type}`, "error");
     }
     setDragging(null);
     loadData();
