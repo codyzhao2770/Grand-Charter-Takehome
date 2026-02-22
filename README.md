@@ -1,6 +1,6 @@
 # DataVault
 
-A unified data management platform that combines a **hosted file system** (upload, organize, preview, search, and drag-and-drop files and folders) with a **database schema explorer** (connect to external PostgreSQL databases, extract and browse schemas, and run natural-language-to-SQL queries).
+A unified data management platform that combines both project prompts a **hosted file system** (upload, organize, preview, search, and drag-and-drop files and folders) with a **database schema explorer** (connect to external PostgreSQL databases, extract and browse schemas, and run natural-language-to-SQL queries).
 
 The unifying concept: database connections are first-class items inside the file system. A DB connection lives in a folder alongside files, so the two capabilities feel like one product rather than two separate tools.
 
@@ -19,6 +19,7 @@ The unifying concept: database connections are first-class items inside the file
 - [Testing](#testing)
 - [CI/CD Pipeline](#cicd-pipeline)
 - [Project Structure](#project-structure)
+- [AI Usage](#ai-usage)
 
 ---
 
@@ -130,7 +131,6 @@ Create a `.env` file from `.env.example`:
 - **DB Connection List** — All database connections listed with refresh and delete actions.
 - **Global Search** — Debounced search bar (300 ms) that searches across files, folders, and DB schemas. Results appear in a dropdown.
 - **Drag-and-Drop Targets** — Sidebar folders accept drag-and-drop for moving items. Auto-expand behavior on hover (800 ms delay).
-
 ---
 
 ## Architecture
@@ -546,3 +546,6 @@ src/
 │   └── helpers.ts                         Mock factories and sample fixtures
 └── generated/prisma/                      Auto-generated Prisma client (gitignored)
 ```
+
+## AI Usage
+I built this project by leveraging Claude Opus 4.6 with thinking mode to handle architectural decisions, boilerplate code, general tedious implementation, and code optimization. I first used Claude to generate an initial design doc `DESIGN.md` by describing general app features and goals as a starting point, simply a hosted file system and schema extractor using Nextjs and Postgres. I then refined the design plan by laying out more specific expectations and constraints, such as specific features that would require their own API routes and performance expectations for file upload/download. Once I was satisfied with the plan, I used Claude Code to generate a minimal working implementation with only bare bone priority features (basic CRUD APIs, minimal frontend for testing) along with appropriate tests. After some manual code fixes, this initial prototype supported schema extraction into one large data dump and basic folder/file operations. I then iterated upon it incrementally adding features such as each of the schema extractor tabs. This way if I ever needed Claude assistance on anything, I could avoid overloading its context and review and revise small batches of generated code at a time. Finally with the entire app complete, I had Claude review the entire codebase to identify any issues or room for optimization in implementation, code quality, scalability, and security (`CODEBASE_ASSESSMENT.md`), especially within generated code. I refactored and fixed any bad code accordingly.
