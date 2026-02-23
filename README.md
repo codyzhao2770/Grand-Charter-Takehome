@@ -5,6 +5,7 @@ A unified data management platform that combines both project prompts a **hosted
 The unifying concept: database connections are first-class items inside the file system. A DB connection lives in a folder alongside files, so the two capabilities feel like one product rather than two separate tools.
 
 Demo pt1: https://www.loom.com/share/fcd766d7a6d949788f394614dca6aff9
+
 Demo pt2: https://www.loom.com/share/7a96fd42024c4eb287b32166516eec77
 
 ---
