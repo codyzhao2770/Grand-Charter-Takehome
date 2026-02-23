@@ -8,6 +8,8 @@ Demo pt1: https://www.loom.com/share/fcd766d7a6d949788f394614dca6aff9
 
 Demo pt2: https://www.loom.com/share/7a96fd42024c4eb287b32166516eec77
 
+Note: I implemented secure URL file sharing but it was done after the deadline so I didn't include it in the demo
+
 ---
 
 ## Table of Contents
