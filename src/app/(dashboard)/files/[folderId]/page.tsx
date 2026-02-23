@@ -8,6 +8,7 @@ import ContextMenu, { type ContextMenuItem } from "@/components/ui/ContextMenu";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import PromptDialog from "@/components/ui/PromptDialog";
 import UploadDialog from "@/components/ui/UploadDialog";
+import ShareDialog from "@/components/ui/ShareDialog";
 import Pagination from "@/components/ui/Pagination";
 import SortSelect, { type SortOption } from "@/components/ui/SortSelect";
 import ViewToggle, { type ViewMode } from "@/components/ui/ViewToggle";
@@ -50,6 +51,7 @@ export default function FolderPage() {
   const [sort, setSort] = useState<SortOption>("name-asc");
   const [view, setView] = useState<ViewMode>("grid");
   const [showUpload, setShowUpload] = useState(false);
+  const [shareFile, setShareFile] = useState<{ id: string; name: string } | null>(null);
 
   const totalsRef = useRef({ folders: 0, files: 0 });
 
@@ -161,6 +163,7 @@ export default function FolderPage() {
       : [
           { label: "Download", onClick: () => { window.location.href = `/api/files/${ctxMenu.id}`; } },
           { label: "Preview", onClick: () => { window.open(`/api/files/${ctxMenu.id}/preview`, "_blank"); } },
+          { label: "Share", onClick: () => setShareFile({ id: ctxMenu.id, name: ctxMenu.name }) },
           { label: "Rename", onClick: () => actions.renameFile(ctxMenu.id, ctxMenu.name) },
           { label: "Delete", onClick: () => actions.deleteFile(ctxMenu.id), variant: "danger" },
         ]
@@ -187,6 +190,7 @@ export default function FolderPage() {
     onDeleteFolder: handleDeleteFolder,
     onRenameFile: actions.renameFile,
     onDeleteFile: actions.deleteFile,
+    onShareFile: (id: string, name: string) => setShareFile({ id, name }),
   };
 
   return (
@@ -197,7 +201,7 @@ export default function FolderPage() {
       onDragLeave={dragDrop.handlePageDragLeave}
       onDrop={dragDrop.handlePageDrop}
     >
-      {dragDrop.externalDragOver && <DropOverlay label={`Drop files to upload to ${folderMeta.name}`} />}
+      {dragDrop.externalDragOver && !showUpload && <DropOverlay label={`Drop files to upload to ${folderMeta.name}`} />}
 
       <div className="flex items-center gap-2 mb-2 text-sm text-zinc-500 flex-wrap">
         <Link href="/files" className="hover:underline">Files</Link>
@@ -291,6 +295,12 @@ export default function FolderPage() {
         onClose={() => setShowUpload(false)}
         folderId={folderId}
         onUploaded={reloadAll}
+      />
+      <ShareDialog
+        open={!!shareFile}
+        onClose={() => setShareFile(null)}
+        fileId={shareFile?.id ?? null}
+        fileName={shareFile?.name}
       />
     </div>
   );

@@ -21,6 +21,7 @@ interface FileBrowserGridProps {
   onDeleteFolder: (id: string) => void;
   onRenameFile: (id: string, name: string) => void;
   onDeleteFile: (id: string) => void;
+  onShareFile?: (id: string, name: string) => void;
 }
 
 function isFolderItem(data: GridItem["data"]): data is FolderItem {
@@ -50,6 +51,7 @@ export default function FileBrowserGrid({
   onDeleteFolder,
   onRenameFile,
   onDeleteFile,
+  onShareFile,
 }: FileBrowserGridProps) {
   const router = useRouter();
 
@@ -131,6 +133,7 @@ export default function FileBrowserGrid({
                 </p>
                 <div className="flex gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
                   <a href={`/api/files/${f.id}`} className="text-xs text-blue-600">Download</a>
+                  {onShareFile && <button onClick={() => onShareFile(f.id, f.name)} className="text-xs text-blue-600 cursor-pointer">Share</button>}
                   <button onClick={() => onRenameFile(f.id, f.name)} className="text-xs text-blue-600 cursor-pointer">Rename</button>
                   <button onClick={() => onDeleteFile(f.id)} className="text-xs text-red-600 cursor-pointer">Delete</button>
                 </div>

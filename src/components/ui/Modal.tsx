@@ -30,6 +30,10 @@ export default function Modal({ open, onClose, children, wide }: ModalProps) {
       onMouseDown={(e) => {
         if (e.target === overlayRef.current) onClose();
       }}
+      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+      onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); }}
+      onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); }}
+      onDrop={(e) => { e.preventDefault(); e.stopPropagation(); }}
     >
       <div className={`bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-2xl w-full mx-4 p-5 ${wide ? "max-w-md" : "max-w-sm"}`}>
         {children}

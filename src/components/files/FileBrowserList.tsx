@@ -20,6 +20,7 @@ interface FileBrowserListProps {
   onDeleteFolder: (id: string) => void;
   onRenameFile: (id: string, name: string) => void;
   onDeleteFile: (id: string) => void;
+  onShareFile?: (id: string, name: string) => void;
 }
 
 function isFolderItem(data: GridItem["data"]): data is FolderItem {
@@ -40,6 +41,7 @@ export default function FileBrowserList({
   onDeleteFolder,
   onRenameFile,
   onDeleteFile,
+  onShareFile,
 }: FileBrowserListProps) {
   const router = useRouter();
 
@@ -104,6 +106,7 @@ export default function FileBrowserList({
               </span>
               <div className="flex gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
                 <a href={`/api/files/${f.id}`} className="text-xs text-blue-600">Download</a>
+                {onShareFile && <button onClick={() => onShareFile(f.id, f.name)} className="text-xs text-blue-600 cursor-pointer">Share</button>}
                 <button onClick={() => onRenameFile(f.id, f.name)} className="text-xs text-blue-600 cursor-pointer">Rename</button>
                 <button onClick={() => onDeleteFile(f.id)} className="text-xs text-red-600 cursor-pointer">Delete</button>
               </div>

@@ -7,6 +7,7 @@ import ContextMenu, { type ContextMenuItem } from "@/components/ui/ContextMenu";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import PromptDialog from "@/components/ui/PromptDialog";
 import UploadDialog from "@/components/ui/UploadDialog";
+import ShareDialog from "@/components/ui/ShareDialog";
 import Pagination from "@/components/ui/Pagination";
 import SortSelect, { type SortOption } from "@/components/ui/SortSelect";
 import ViewToggle, { type ViewMode } from "@/components/ui/ViewToggle";
@@ -40,6 +41,7 @@ export default function FilesPage() {
   const [sort, setSort] = useState<SortOption>("name-asc");
   const [view, setView] = useState<ViewMode>("grid");
   const [showUpload, setShowUpload] = useState(false);
+  const [shareFile, setShareFile] = useState<{ id: string; name: string } | null>(null);
 
   const totalsRef = useRef({ folders: 0, files: 0 });
 
@@ -124,6 +126,7 @@ export default function FilesPage() {
       : [
           { label: "Download", onClick: () => { window.location.href = `/api/files/${ctxMenu.id}`; } },
           { label: "Preview", onClick: () => { window.open(`/api/files/${ctxMenu.id}/preview`, "_blank"); } },
+          { label: "Share", onClick: () => setShareFile({ id: ctxMenu.id, name: ctxMenu.name }) },
           { label: "Rename", onClick: () => actions.renameFile(ctxMenu.id, ctxMenu.name) },
           { label: "Delete", onClick: () => actions.deleteFile(ctxMenu.id), variant: "danger" },
         ]
@@ -146,6 +149,7 @@ export default function FilesPage() {
     onDeleteFolder: actions.deleteFolder,
     onRenameFile: actions.renameFile,
     onDeleteFile: actions.deleteFile,
+    onShareFile: (id: string, name: string) => setShareFile({ id, name }),
   };
 
   return (
@@ -156,7 +160,7 @@ export default function FilesPage() {
       onDragLeave={dragDrop.handlePageDragLeave}
       onDrop={dragDrop.handlePageDrop}
     >
-      {dragDrop.externalDragOver && <DropOverlay />}
+      {dragDrop.externalDragOver && !showUpload && <DropOverlay />}
 
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Files</h1>
@@ -220,6 +224,12 @@ export default function FilesPage() {
         open={showUpload}
         onClose={() => setShowUpload(false)}
         onUploaded={loadData}
+      />
+      <ShareDialog
+        open={!!shareFile}
+        onClose={() => setShareFile(null)}
+        fileId={shareFile?.id ?? null}
+        fileName={shareFile?.name}
       />
     </div>
   );

@@ -16,6 +16,7 @@ model User {
   folders       Folder[]
   files         File[]
   dbConnections DbConnection[]
+  shareLinks    ShareLink[]
 
   @@map("users")
 }
@@ -49,8 +50,9 @@ model File {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
 
-  folder Folder? @relation(fields: [folderId], references: [id], onDelete: Cascade)
-  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder     Folder?     @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shareLinks ShareLink[]
 
   @@index([userId, folderId])
   @@map("files")
@@ -75,4 +77,19 @@ model DbConnection {
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("db_connections")
+}
+
+model ShareLink {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  token     String   @unique @db.VarChar(64)
+  fileId    String   @map("file_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@map("share_links")
 }
